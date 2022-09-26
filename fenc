@@ -13,6 +13,13 @@ parser.add_argument("--subtitle_index", type=int)
 parser.add_argument("--subtitle_file")
 parser.add_argument("--downscale_720p", action='store_true')
 parser.add_argument("--test", action='store_true')
+parser.add_argument("--target_bitrate", type=int,
+        default=2500,
+        help='target bitrate in kb/s.')
+# N.B. AVPro with 'low latency streaming' enabled has a really short buffer.
+parser.add_argument("--buffer_duration", type=float,
+        default=0.250,
+        help='target buffer duration in seconds, i.e. how long you expect player to buffer.')
 args = parser.parse_args()
 
 infile = args.infile
@@ -69,6 +76,15 @@ else:
     s2r = ffmpeg.filter_multi_output([subs, ffv], 'scale2ref')
     ffv = s2r[1].overlay(s2r[0])
 
+# cap bufsize based on expected buffer duration, so there aren't
+# bitrate spikes above it and thus buffer underruns during playback.
+# Note that AVPro-based players will happily buffer more, but in
+# low-latency mode they really stumble on the first part of playback
+# if it gets a buffer underrun. Annoying. would be nice to only clamp
+# the bitrate for like the first 10 seconds of video (assuming you're
+# not doing a lot of random seeks). oh well.
+bufsize = int(args.target_bitrate * args.buffer_duration)
+
 opts = {
         'c:v': 'libx264',
         'preset': 'fast',
@@ -76,9 +92,9 @@ opts = {
         'movflags': 'faststart',
         'crf': '22',
         #'b:v': '2500K',
-        'maxrate': '2500K',
+        'maxrate': f"{args.target_bitrate}K",
         # try and cap the bitrate, it'll decrease the crf to compensate
-        'bufsize': '1250K',
+        'bufsize': f"{bufsize}K",
         #'c:a': 'copy', TODO ideally we'd just copy existing AAC
         # but need to modify the ffprobe stuff to detect.
         'c:a': 'aac',

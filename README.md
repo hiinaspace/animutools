@@ -1,11 +1,11 @@
 # animutools
 
-tools for running an animu club in vrchat.
+tools for running an animu club in vrchat/chilloutVR.
 
 ## fenc
 
 encoding script based on ffmpeg-python . usually does the right thing as far as
-bitrate and stuff for playing in vrchat's AVPro or unity player, i.e.
+bitrate and stuff for playing in AVPro or unity player, i.e.
 
 - baked hardsubs from embedded mkv
 - h264/aac
@@ -15,7 +15,7 @@ bitrate and stuff for playing in vrchat's AVPro or unity player, i.e.
     lore on the internet for properly encoding streaming h264 is very
     inconclusive.
 - attempts to detect the jp language and eng subs for annoying EraiRaws rips.
-  You may still need to specify the ``--subtitle_index` still.
+  You may still need to specify the `--subtitle_index` still.
 
 ## allanime.py
 
