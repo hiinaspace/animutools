@@ -1,0 +1,104 @@
+tasks:
+  encode:
+    inputs:
+      - filesystem: 
+          path: /mnt/pool/transmission/anime
+          recursive: true
+          mask: '*.mkv'
+      - filesystem: 
+          path: /mnt/pool/transmission/anime
+          recursive: true
+          mask: '*.mp4'
+    metainfo_series: yes
+    #all_series: yes
+    #  #set:
+    #  #  path: "{{ series_name|lower|replace(' ','')|truncate(4,True) }}{{ series_id|pad(2) }}"
+    series:
+      settings:
+        animu:
+          parse_only: yes
+          set:
+            transcoder: fenc
+      animu:
+        - "Atasha Kawajiri Kodama Da yo":
+            set:
+              shortname: atasha
+        - "Lycoris Recoil":
+            set:
+              shortname: lycoris
+        - "Yofukashi no Uta":
+            set:
+              shortname: yofukashi
+        - "Isekai Ojisan":
+            set:
+              shortname: ojisan
+        - "Yurei Deco":
+            set:
+              shortname: yurei
+    disable: 
+      - seen
+    require_field:
+      - series_name
+      - shortname
+      - transcoder
+    if:
+      - "(\"/mnt/nvme/webdav/\" ~ shortname ~ (series_id | pad(2)) ~ \".mp4\") is fs_file": reject
+
+    accept_all: true
+    #exec: 
+    #  on_input: 
+    #    for_entries: 
+    exec: {{transcoder}} "{{location}}" "/mnt/nvme/webdav/{{shortname}}{{ series_id|pad(2) }}.mp4"
+    #exec: echo "{{title}}"
+  animu:
+    inputs:
+      - rss: https://nyaa.si/?page=rss&u=subsplease
+      - rss: https://nyaa.si/?page=rss&u=Erai-raws
+      #- rss: https://nyaa.si/?page=rss&q=yurei+deco
+    content_filter:
+      # XXX it's python fnmatch, so have to match literal brackets
+      reject: '*[[]v0[]]*'
+    series:
+      settings:
+        animu:
+          quality: 1080p
+          #set:
+          #  path: /mnt/pool/transmission/anime/{{series_name}}/
+          #  content_filename: "{{ series_name|lower|replace(' ','')|truncate(4,True) }}{{ series_episode|pad(2) }}"
+      animu:
+        - "Atasha Kawajiri Kodama Da yo":
+            from_group: SubsPlease
+        - "Lycoris Recoil":
+            from_group: SubsPlease
+        - "Yofukashi no Uta":
+            from_group: SubsPlease
+        - "Yurei Deco":
+            from_group: SubsPlease
+        - "Isekai Ojisan":
+            from_group: Erai-raws
+    transmission:
+      host: localhost
+      port: 9091
+      username: transmission
+      password: test
+      path: /mnt/pool/transmission/anime/{{series_name}}/
+      ## series_episode is undefined
+      #content_filename: "{{ series_name|lower|replace(' ','')|truncate(4,True) }}{{ series_episode|pad(2) }}"
+  remove_done:
+    from_transmission: 
+      host: localhost
+      port: 9091
+      username: transmission
+      password: test
+      only_complete: yes
+    disable: [seen, seen_info_hash]
+    if:
+      - transmission_progress == 100: accept
+      # todo replace with like a older than N days 
+      - transmission_ratio < 10: reject
+    transmission:
+      host: localhost
+      port: 9091
+      username: transmission
+      password: test
+      action: remove

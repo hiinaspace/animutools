@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+import ffmpeg
+import sys
+import fcntl
+import os
+import argparse
+import tempfile
+
+parser = argparse.ArgumentParser()
+parser.add_argument("infile")
+parser.add_argument("outfile")
+parser.add_argument("--subtitle_index", type=int)
+parser.add_argument("--subtitle_file")
+parser.add_argument("--downscale_720p", action='store_true')
+parser.add_argument("--test", action='store_true')
+args = parser.parse_args()
+
+infile = args.infile
+outfile = args.outfile
+
+# try to work around dumb dual audio files
+probe = ffmpeg.probe(infile)
+audio_track = 0
+audio_count = 0
+audio_stream = None
+sub_count = 0
+sub_track = 0
+sub_type = 'text'
+for stream in probe['streams']:
+    # try to select jpn audio over english
+    if stream['codec_type'] == 'audio' and 'tags' in stream:
+        tags = stream['tags']
+        if tags and 'language' in tags and tags['language'] == 'jpn':
+            audio_track = audio_count
+            audio_stream = stream
+        audio_count += 1
+    if stream['codec_type'] == 'subtitle':
+        # try to select default stream
+        # TODO probably need to handle multi-lang subs somehow,
+        # at least subsplease doesn't do multiples
+        if 'disposition' in stream and 'default' in stream['disposition'] and stream['disposition']['default'] == 1:
+            sub_track = sub_count
+        if stream['codec_name'] == 'dvd_subtitle' or stream['codec_name'] == 'hdmv_pgs_subtitle':
+            sub_type = 'dvd'
+        sub_count += 1
+
+if args.subtitle_index:
+    print(f"overriding sub track from {sub_track=} to {args.subtitle_index=}", file=sys.stderr)
+    sub_track = args.subtitle_index
+
+print(f"selecting {audio_track=} {audio_stream=}", file=sys.stderr)
+print(f"selecting {sub_track=}", file=sys.stderr)
+
+ffin = ffmpeg.input(infile)
+ffv = ffin.video.filter('format', 'yuv420p')
+if args.downscale_720p:
+    ffv = ffv.filter('scale', '1280','-1')
+
+# assume subtitle track matches the audio track
+if sub_type == 'text':
+    subfile = infile
+    if args.subtitle_file:
+        subfile = args.subtitle_file
+
+    ffv = ffv.filter('subtitles', filename=subfile, stream_index=sub_track)
+else:
+    # burn the dvd subs on the image
+    subs = ffin[f's:{sub_track}']
+    s2r = ffmpeg.filter_multi_output([subs, ffv], 'scale2ref')
+    ffv = s2r[1].overlay(s2r[0])
+
+opts = {
+        'c:v': 'libx264',
+        'preset': 'fast',
+        'tune': 'animation',
+        'movflags': 'faststart',
+        'crf': '22',
+        #'b:v': '2500K',
+        'maxrate': '2500K',
+        # try and cap the bitrate, it'll decrease the crf to compensate
+        'bufsize': '1250K',
+        #'c:a': 'copy', TODO ideally we'd just copy existing AAC
+        # but need to modify the ffprobe stuff to detect.
+        'c:a': 'aac',
+        'b:a': '160k',
+        'ac': '2',
+        'f': 'mp4',
+        }
+
+if args.test:
+    # just encode a bit to test
+    opts['t'] = 60
+
+audio = ffin[f'a:{audio_track}']
+
+output = ffmpeg.output(ffv, audio, outfile, **opts)
+print(f"then run {' '.join(output.get_args())=}", file=sys.stderr)
+
+# basic flock queueing for multiple invocations
+with open("/tmp/vrcencode", "w+") as f:
+    fcntl.flock(f, fcntl.LOCK_EX)
+    output.run()
+
+# 2 pass doesn't work that well 
+#with tempfile.TemporaryDirectory() as tmpdirname:
+#    opts['passlogfile'] = f"{tmpdirname}/passlogfile"
+#
+#    opts['pass'] = 1
+#    pass1 = ffmpeg.output(ffv, audio, "/dev/null", **opts)
+#    opts['pass'] = 2
+#    pass2 = ffmpeg.output(ffv, audio, outfile, **opts)
+#
+#    print(f"will run {' '.join(pass1.get_args())=}", file=sys.stderr)
+#    print(f"then run {' '.join(pass2.get_args())=}", file=sys.stderr)
+#
+#    # basic flock queueing for multiple invocations
+#    with open("/tmp/vrcencode", "w+") as f:
+#        fcntl.flock(f, fcntl.LOCK_EX)
+#        pass1.run(overwrite_output=True)
+#        pass2.run()
