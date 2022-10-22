@@ -16,10 +16,16 @@ parser.add_argument("--test", action='store_true')
 parser.add_argument("--target_bitrate", type=int,
         default=2500,
         help='target bitrate in kb/s.')
-# N.B. AVPro with 'low latency streaming' enabled has a really short buffer.
+# N.B. AVPro however chilloutVR configures it has an extermely short buffer.
+# not sure why still, but consider changing this to like 0.250 to work around its
+# sync problems.
 parser.add_argument("--buffer_duration", type=float,
-        default=0.250,
+        default=1,
         help='target buffer duration in seconds, i.e. how long you expect player to buffer.')
+
+# chilloutVR's player does seem to handle HLS correctly, and single file HLS seems to
+# be the least annoying way to do this.
+parser.add_argument("--hls", action='store_true', help="output single file HLS, fragmented TS + playlist")
 args = parser.parse_args()
 
 infile = args.infile
@@ -33,6 +39,7 @@ audio_stream = None
 sub_count = 0
 sub_track = 0
 sub_type = 'text'
+found_eng_sub_track = False
 for stream in probe['streams']:
     # try to select jpn audio over english
     if stream['codec_type'] == 'audio' and 'tags' in stream:
@@ -43,12 +50,18 @@ for stream in probe['streams']:
         audio_count += 1
     if stream['codec_type'] == 'subtitle':
         # try to select default stream
-        # TODO probably need to handle multi-lang subs somehow,
-        # at least subsplease doesn't do multiples
         if 'disposition' in stream and 'default' in stream['disposition'] and stream['disposition']['default'] == 1:
             sub_track = sub_count
         if stream['codec_name'] == 'dvd_subtitle' or stream['codec_name'] == 'hdmv_pgs_subtitle':
             sub_type = 'dvd'
+        # try to select the first english sub track, which at least for these awful
+        # cyberpunk rips seems to be the japanese tl track and not the dubtitles.
+        # it is unfortunately completely ambiguous though.
+        if 'language' in stream['tags'] and stream['tags']['language'] == "eng":
+            if not found_eng_sub_track:
+                sub_track = sub_count
+                found_eng_sub_track = True
+                print(f"found first english sub track at {sub_track}", file=sys.stderr)
         sub_count += 1
 
 if args.subtitle_index:
@@ -89,7 +102,6 @@ opts = {
         'c:v': 'libx264',
         'preset': 'fast',
         'tune': 'animation',
-        'movflags': 'faststart',
         'crf': '22',
         #'b:v': '2500K',
         'maxrate': f"{args.target_bitrate}K",
@@ -103,13 +115,43 @@ opts = {
         'f': 'mp4',
         }
 
+if args.hls:
+    # encode as HLS, a single .ts segment file + .m3u8 playlist with byte ranges
+    # should be essentially equivalent to a progressive mp4, but for some reason
+    # CVR really chokes on those, while it does fine on HLS. annoying, since browsers
+    # can't play back HLS natively. oh well.
+
+
+    # i'm not sure how necessary it is to make the keyframes nice and tidy
+    # kind of annoying to have to guess the output framerate.
+    # https://superuser.com/questions/908280/what-is-the-correct-way-to-fix-keyframes-in-ffmpeg-for-dash/908325#908325
+    #framerate = 30
+    #interval = 2
+    #keyframes_per_segment = 3
+
+    #opts['r'] = framerate
+    #opts['g'] = framerate * interval
+    #opts['keyint_min'] = framerate * interval
+    #opts['hls_time'] = interval * keyframes_per_segment
+    # https://teddit.net/r/ffmpeg/comments/nam6hg/mp4_to_hls_how_to_set_time_segments_properly/
+    # not sure if necessary, according to that other superuser post
+    # opts['force_key_frames:v'] = 'expr:gte(t,n_forced*2)'
+    opts['f'] = 'hls'
+    opts['hls_playlist_type'] = 'vod'
+    opts['hls_time'] = 10
+    opts['hls_list_size'] = 0
+    opts['hls_flags'] = 'single_file'
+else:
+    opts['movflags'] = 'faststart'
+
+
 if args.test:
     # just encode a bit to test
     opts['t'] = 60
 
 audio = ffin[f'a:{audio_track}']
 
-output = ffmpeg.output(ffv, audio, outfile, **opts)
+output = ffmpeg.overwrite_output(ffmpeg.output(ffv, audio, outfile, **opts))
 print(f"then run {' '.join(output.get_args())=}", file=sys.stderr)
 
 # basic flock queueing for multiple invocations

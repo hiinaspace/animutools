@@ -17,6 +17,31 @@ bitrate and stuff for playing in AVPro or unity player, i.e.
 - attempts to detect the jp language and eng subs for annoying EraiRaws rips.
   You may still need to specify the `--subtitle_index` still.
 
+### chilloutVR workarounds
+
+For some reason chilloutVR's AVPro configuration has severe problems with the
+usual progressive mp4s. On initial load, it makes a huge burst of range requests
+throughout the file, like it's looking for something. This burst seems to throw
+off the audio sync, as the video gets delayed a few seconds, and you have to
+toggle the network sync on and off to get AVPro to reload the video and (hopefully)
+sync the audio correctly. I did some more research on the [feedback board thread][0].
+
+[0]: https://feedback.abinteractive.net/p/disable-avpro-s-use-low-latency-by-default-expose-as-toggle
+
+However, I did find a workaround by encoding videos as segmented .TS files with
+HLS playlists, which work fine. Use the `--hls` option with `fenc` and specify
+your output as `somefile.m3u8`, and you'll get both the playlist and a
+similarly named `.ts` file in the same directory. If you serve both over HTTP and
+paste the .m3u8 file into the CVR video player, it should work.
+
+It is more annoying since there are two files, and if you just want to test the
+file beforehand, you'll have to use VLC or mpv (can't just stick the m3u8 url
+into your browser). But better than broken playback I guess.
+
+The HLS encode only has a single resolution, no other source sets. TODO it
+might be nice to try encoding like a 360p version along with the original
+though, for the internet-challenged among us.
+
 ## allanime.py
 
 a mysterious ffmpeg-python script for packing 6 videos into a grid, which each
