@@ -8,7 +8,7 @@ encoding script based on ffmpeg-python . usually does the right thing as far as
 bitrate and stuff for playing in AVPro or unity player, i.e.
 
 - baked hardsubs from embedded mkv
-- h264/aac
+- h264/aac, in h264 high profile to fix AVPro buffering issues
 - "fast start"/web optimized
 - bit-capped 1pass CRF encoding
   - and commented out 2pass encoding which I don't really think helps; the
@@ -17,12 +17,19 @@ bitrate and stuff for playing in AVPro or unity player, i.e.
 - attempts to detect the jp language and eng subs for annoying EraiRaws rips.
   You may still need to specify the `--subtitle_index` still.
 
-### AVPro progressive mp4 buffering problem and workarounds
+### AVPro progressive mp4 buffering problem with h264 main profile
 
-For some reason AVPro has severe problems with the usual progressive mp4s. On
+For some reason AVPro has severe problems with progressive mp4s streamed over
+HTTP, if they are encoded in `main` profile mode (ffmpeg/x264's default). On
 initial load, it makes a very quick burst of range requests throughout the file
 then continues to make very tiny powers of two byte ranges rather than proper
 chunked streaming.
+
+After much research, I found that simply forcing high profile with `-profile:v`
+fixes all the previously encountered issues. So the following information is
+just FYI.
+
+### (Historical) buffering problem investigation
 
 This burst of requests and its usual latency as the origin struggles to serve
 them throws off the audio sync, as the video gets delayed a few seconds. If

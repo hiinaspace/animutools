@@ -94,15 +94,17 @@ else:
 
 # cap bufsize based on expected buffer duration, so there aren't
 # bitrate spikes above it and thus buffer underruns during playback.
-# Note that AVPro-based players will happily buffer more, but in
-# low-latency mode they really stumble on the first part of playback
-# if it gets a buffer underrun. Annoying. would be nice to only clamp
-# the bitrate for like the first 10 seconds of video (assuming you're
-# not doing a lot of random seeks). oh well.
 bufsize = int(args.target_bitrate * args.buffer_duration)
 
 opts = {
         'c:v': 'libx264',
+        # XXX the ffmpeg default somehow likes to drop the encoding to `main`
+        # compatability. This sounds benign, but for whatever reason, if AVPro
+        # sees a main profile mp4 file it has really awful buffering behavior
+        # that interacts badly with cloudflare and really screws up audio
+        # syncing.  I can't see any bad effects with forcing high profile now,
+        # so just do it.
+        'profile:v': 'high',
         'preset': 'fast',
         'tune': 'animation',
         'crf': '22',
@@ -119,15 +121,12 @@ opts = {
         }
 
 if args.hls or os.path.splitext(outfile)[1] == ".m3u8":
-    # encode as HLS, a bunch of .ts segment files + .m3u8 playlist. Should be
-    # essentially equivalent to a progressive mp4, but for some reason CVR
-    # really chokes on those, while it does fine on HLS. annoying, since
-    # browsers can't play back HLS natively. oh well.  I also tried single file
-    # HLS where the playlist indexes into byte ranges, but cloudflare has bad
-    # cache-loading behavior with a large .ts file. Its proxy requests the
-    # entire file from the origin multiple times and waits for the entire load
-    # before serving the byte ranges itself. So individual file chunks still
-    # seems the most robust. annoying but it is how it is.
+    # encode as HLS, a bunch of .ts segment files + .m3u8 playlist.
+    # Originaly I thought you'd need to do this to work around AVPro's
+    # awful HTTP buffering behavior. However it turns out forcing h264 high profile
+    # instead of letting h264 drop to main profile solves all those issues.
+    # so unless you need HLS or implement actual multiple var formats, this
+    # probably isn't useful.
 
     # i'm not sure how necessary it is to make the keyframes nice and tidy
     # kind of annoying to have to guess the output framerate.
