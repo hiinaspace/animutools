@@ -16,16 +16,12 @@ parser.add_argument("--test", action='store_true')
 parser.add_argument("--target_bitrate", type=int,
         default=2500,
         help='target bitrate in kb/s.')
-# N.B. AVPro however chilloutVR configures it has an extermely short buffer.
-# not sure why still, but consider changing this to like 0.250 to work around its
-# sync problems.
 parser.add_argument("--buffer_duration", type=float,
         default=1,
         help='target buffer duration in seconds, i.e. how long you expect player to buffer.')
 
-# chilloutVR's player does seem to handle HLS correctly, and single file HLS seems to
-# be the least annoying way to do this.
-parser.add_argument("--hls", action='store_true', help="output single file HLS, fragmented TS + playlist")
+parser.add_argument("--hls", action='store_true', help="output HLS playlist, with ts chunks in an {outfile}.ts directory")
+parser.add_argument("--probe", action='store_true')
 args = parser.parse_args()
 
 infile = args.infile
@@ -33,6 +29,10 @@ outfile = args.outfile
 
 # try to work around dumb dual audio files
 probe = ffmpeg.probe(infile)
+if args.probe:
+    import pprint
+    pprint.pprint(probe)
+    sys.exit(0)
 audio_track = 0
 audio_count = 0
 audio_stream = None
@@ -40,6 +40,7 @@ sub_count = 0
 sub_track = 0
 sub_type = 'text'
 found_eng_sub_track = False
+# XXX clean up spaghetti logic through here
 for stream in probe['streams']:
     # try to select jpn audio over english
     if stream['codec_type'] == 'audio' and 'tags' in stream:
@@ -52,8 +53,8 @@ for stream in probe['streams']:
         # try to select default stream
         if 'disposition' in stream and 'default' in stream['disposition'] and stream['disposition']['default'] == 1:
             sub_track = sub_count
-        if stream['codec_name'] == 'dvd_subtitle' or stream['codec_name'] == 'hdmv_pgs_subtitle':
-            sub_type = 'dvd'
+            if stream['codec_name'] == 'dvd_subtitle' or stream['codec_name'] == 'hdmv_pgs_subtitle':
+                sub_type = 'dvd'
         # try to select the first english sub track, which at least for these awful
         # cyberpunk rips seems to be the japanese tl track and not the dubtitles.
         # it is unfortunately completely ambiguous though.
@@ -62,6 +63,8 @@ for stream in probe['streams']:
                 sub_track = sub_count
                 found_eng_sub_track = True
                 print(f"found first english sub track at {sub_track}", file=sys.stderr)
+                if stream['codec_name'] == 'dvd_subtitle' or stream['codec_name'] == 'hdmv_pgs_subtitle':
+                    sub_type = 'dvd'
         sub_count += 1
 
 if args.subtitle_index:
@@ -112,15 +115,19 @@ opts = {
         'c:a': 'aac',
         'b:a': '160k',
         'ac': '2',
-        'f': 'mp4',
+        #'f': 'mp4',
         }
 
-if args.hls:
-    # encode as HLS, a single .ts segment file + .m3u8 playlist with byte ranges
-    # should be essentially equivalent to a progressive mp4, but for some reason
-    # CVR really chokes on those, while it does fine on HLS. annoying, since browsers
-    # can't play back HLS natively. oh well.
-
+if args.hls or os.path.splitext(outfile)[1] == ".m3u8":
+    # encode as HLS, a bunch of .ts segment files + .m3u8 playlist. Should be
+    # essentially equivalent to a progressive mp4, but for some reason CVR
+    # really chokes on those, while it does fine on HLS. annoying, since
+    # browsers can't play back HLS natively. oh well.  I also tried single file
+    # HLS where the playlist indexes into byte ranges, but cloudflare has bad
+    # cache-loading behavior with a large .ts file. Its proxy requests the
+    # entire file from the origin multiple times and waits for the entire load
+    # before serving the byte ranges itself. So individual file chunks still
+    # seems the most robust. annoying but it is how it is.
 
     # i'm not sure how necessary it is to make the keyframes nice and tidy
     # kind of annoying to have to guess the output framerate.
@@ -140,10 +147,13 @@ if args.hls:
     opts['hls_playlist_type'] = 'vod'
     opts['hls_time'] = 10
     opts['hls_list_size'] = 0
-    opts['hls_flags'] = 'single_file'
+
+    # store chunks in a directory alongside the m3u8 playlist for convenience
+    os.makedirs(f"{outfile}.ts", exist_ok=True)
+    opts['hls_base_url'] = f"{os.path.basename(outfile)}.ts/"
+    opts['hls_segment_filename'] = f"{outfile}.ts/%04d.ts"
 else:
     opts['movflags'] = 'faststart'
-
 
 if args.test:
     # just encode a bit to test

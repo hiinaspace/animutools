@@ -17,30 +17,54 @@ bitrate and stuff for playing in AVPro or unity player, i.e.
 - attempts to detect the jp language and eng subs for annoying EraiRaws rips.
   You may still need to specify the `--subtitle_index` still.
 
-### chilloutVR workarounds
+### AVPro progressive mp4 buffering problem and workarounds
 
-For some reason chilloutVR's AVPro configuration has severe problems with the
-usual progressive mp4s. On initial load, it makes a huge burst of range requests
-throughout the file, like it's looking for something. This burst seems to throw
-off the audio sync, as the video gets delayed a few seconds, and you have to
-toggle the network sync on and off to get AVPro to reload the video and (hopefully)
-sync the audio correctly. I did some more research on the [feedback board thread][0].
+For some reason AVPro has severe problems with the usual progressive mp4s. On
+initial load, it makes a very quick burst of range requests throughout the file
+then continues to make very tiny powers of two byte ranges rather than proper
+chunked streaming.
+
+This burst of requests and its usual latency as the origin struggles to serve
+them throws off the audio sync, as the video gets delayed a few seconds. If
+your mp4 files are proxied by cloudflare, the initial latency on load (and thus
+the audio desync) is made even worse, up to CVR's 5 second loading timeout
+triggering and breaking playback completely. In CVR, you have to toggle the
+network sync on and off to get AVPro to reload the video and (hopefully) sync
+the audio correctly. VRChat seems to handle the problem a bit better. If the
+overall bitrate of the stream is low enough (<1500kbps or so), video playback
+is generally okay, but that's a restrictive bitrate for e.g. 1080p.
+
+This problem occurs in both ChilloutVR, VRChat, and AVPro's standalone
+unitypackage trial version, so I think it is actually AVPro's fault. I did some
+more research on the [feedback board thread][0].
 
 [0]: https://feedback.abinteractive.net/p/disable-avpro-s-use-low-latency-by-default-expose-as-toggle
 
-However, I did find a workaround by encoding videos as segmented .TS files with
-HLS playlists, which work fine. Use the `--hls` option with `fenc` and specify
-your output as `somefile.m3u8`, and you'll get both the playlist and a
-similarly named `.ts` file in the same directory. If you serve both over HTTP and
-paste the .m3u8 file into the CVR video player, it should work.
+However, I did find a workaround by encoding videos as an HLS vod playlists,
+which work fine. If you use the `--hls` option and/or specify your output as
+`somefile.m3u8`, then `fenc` will create a directory `somefile.m3u8.ts`, encode
+your video into small segments, and output the m3u8 file. If you both the .ts
+segment dir and the playlist over HTTP and paste the .m3u8 file into the CVR/VRC
+video player, it should work.
 
-It is more annoying since there are two files, and if you just want to test the
-file beforehand, you'll have to use VLC or mpv (can't just stick the m3u8 url
-into your browser). But better than broken playback I guess.
+It is more annoying since there are a bunch of segment files, and if you just
+want to test the file beforehand, you'll have to use VLC or mpv (can't just
+stick the m3u8 url into your browser). But better than broken playback I guess.
 
 The HLS encode only has a single resolution, no other source sets. TODO it
 might be nice to try encoding like a 360p version along with the original
 though, for the internet-challenged among us.
+
+Another workaround I tried was using .mkv muxing instead of .mp4. This somehow
+sidesteps the bad buffering behavior. However, if the .mkv is proxied by
+cloudflare, its agressive edge cache will request and load the entire file
+first, generally triggering the same audio desync. So the least bad solution
+still seems to be multi-file HLS.
+
+The usual trick of using dropbox public file hosting seems to also sidestep
+this issue. Maybe their http servers are just better configured than mine. I
+swear this all worked better with my exact same nginx configuration and
+encoding settings before though. It's all so tiresome.
 
 ## allanime.py
 
