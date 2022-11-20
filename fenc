@@ -21,6 +21,8 @@ parser.add_argument("--buffer_duration", type=float,
         help='target buffer duration in seconds, i.e. how long you expect player to buffer.')
 
 parser.add_argument("--hls", action='store_true', help="output HLS playlist, with ts chunks in an {outfile}.ts directory")
+parser.add_argument("--hls_multi", action='store_true', help="encode multiple resolutions in hls")
+parser.add_argument("--dry_run", action='store_true', help="just print ffmpeg invocation")
 parser.add_argument("--probe", action='store_true')
 args = parser.parse_args()
 
@@ -112,15 +114,14 @@ opts = {
         'maxrate': f"{args.target_bitrate}K",
         # try and cap the bitrate, it'll decrease the crf to compensate
         'bufsize': f"{bufsize}K",
-        #'c:a': 'copy', TODO ideally we'd just copy existing AAC
-        # but need to modify the ffprobe stuff to detect.
         'c:a': 'aac',
         'b:a': '160k',
         'ac': '2',
         #'f': 'mp4',
         }
 
-if args.hls or os.path.splitext(outfile)[1] == ".m3u8":
+
+if args.hls_multi or args.hls or os.path.splitext(outfile)[1] == ".m3u8":
     # encode as HLS, a bunch of .ts segment files + .m3u8 playlist.
     # Originaly I thought you'd need to do this to work around AVPro's
     # awful HTTP buffering behavior. However it turns out forcing h264 high profile
@@ -144,11 +145,13 @@ if args.hls or os.path.splitext(outfile)[1] == ".m3u8":
     # opts['force_key_frames:v'] = 'expr:gte(t,n_forced*2)'
     opts['f'] = 'hls'
     opts['hls_playlist_type'] = 'vod'
-    opts['hls_time'] = 10
+    opts['hls_time'] = 4
     opts['hls_list_size'] = 0
 
     # store chunks in a directory alongside the m3u8 playlist for convenience
-    os.makedirs(f"{outfile}.ts", exist_ok=True)
+    if not args.dry_run:
+        os.makedirs(f"{outfile}.ts", exist_ok=True)
+
     opts['hls_base_url'] = f"{os.path.basename(outfile)}.ts/"
     opts['hls_segment_filename'] = f"{outfile}.ts/%04d.ts"
 else:
@@ -160,13 +163,39 @@ if args.test:
 
 audio = ffin[f'a:{audio_track}']
 
-output = ffmpeg.overwrite_output(ffmpeg.output(ffv, audio, outfile, **opts))
-print(f"then run {' '.join(output.get_args())=}", file=sys.stderr)
+if args.hls_multi:
+    ffv = ffv.filter_multi_output('split')
+    audios = audio.filter_multi_output('asplit')
+    opts['b:a:0'] = '128K'
+    opts['b:a:1'] = '160K'
 
-# basic flock queueing for multiple invocations
-with open("/tmp/vrcencode", "w+") as f:
-    fcntl.flock(f, fcntl.LOCK_EX)
-    output.run()
+    ffv720 = ffv[0].filter('scale', w=1280, h=720, force_original_aspect_ratio='decrease')
+    opts['b:v:0'] = '2M'
+    ffv1080 = ffv[1].filter('scale', w=1920, h=1080, force_original_aspect_ratio='decrease').hue(h=180)
+    opts['b:v:1'] = '4M'
+
+    opts['var_stream_map'] = 'v:0,a:0 v:1,a:1'
+    opts['hls_segment_filename'] = f"{outfile}.ts/%v_%04d.ts"
+    del opts['hls_base_url'] # don't need for these playlists
+    opts['master_pl_name'] = 'test_master.m3u8'
+
+    out_var = f"{outfile}.ts/%v.m3u8"
+    output = ffmpeg.overwrite_output(ffmpeg.output(ffv720, audios[0], ffv1080, audios[1], out_var, **opts))
+else:
+    output = ffmpeg.overwrite_output(ffmpeg.output(ffv, audio, outfile, **opts))
+
+if args.dry_run:
+    for a in output.get_args():
+        if a.startswith('-'):
+            print(a, file=sys.stderr, end=" ")
+        else:
+            print(f"'{a}' \\", file=sys.stderr)
+    print("", file=sys.stderr)
+else:
+    # basic flock queueing for multiple invocations
+    with open("/tmp/vrcencode", "w+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        output.run()
 
 # 2 pass doesn't work that well 
 #with tempfile.TemporaryDirectory() as tmpdirname:
