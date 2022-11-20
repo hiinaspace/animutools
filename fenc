@@ -107,6 +107,11 @@ opts = {
         # syncing.  I can't see any bad effects with forcing high profile now,
         # so just do it.
         'profile:v': 'high',
+        # for streaming the GOP size and keyframe interval should apparently
+        # be fairly short, here 2 seconds at 24fps. ffmpeg default is 250, so
+        # 10 seconds.
+        'g': 48,
+        'keyint_min': 48,
         'preset': 'fast',
         'tune': 'animation',
         'crf': '22',
