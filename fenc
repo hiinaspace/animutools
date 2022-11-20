@@ -21,6 +21,8 @@ parser.add_argument("--buffer_duration", type=float,
         help='target buffer duration in seconds, i.e. how long you expect player to buffer.')
 
 parser.add_argument("--hls", action='store_true', help="output HLS playlist, with ts chunks in an {outfile}.ts directory")
+parser.add_argument("--hls_time", default=4, help="hls segment time in seconds")
+parser.add_argument("--dry_run", action='store_true', help="just output ffmpeg invocation and exit")
 parser.add_argument("--probe", action='store_true')
 args = parser.parse_args()
 
@@ -144,7 +146,7 @@ if args.hls or os.path.splitext(outfile)[1] == ".m3u8":
     # opts['force_key_frames:v'] = 'expr:gte(t,n_forced*2)'
     opts['f'] = 'hls'
     opts['hls_playlist_type'] = 'vod'
-    opts['hls_time'] = 10
+    opts['hls_time'] = args.hls_time
     opts['hls_list_size'] = 0
 
     # store chunks in a directory alongside the m3u8 playlist for convenience
@@ -161,12 +163,19 @@ if args.test:
 audio = ffin[f'a:{audio_track}']
 
 output = ffmpeg.overwrite_output(ffmpeg.output(ffv, audio, outfile, **opts))
-print(f"then run {' '.join(output.get_args())=}", file=sys.stderr)
 
-# basic flock queueing for multiple invocations
-with open("/tmp/vrcencode", "w+") as f:
-    fcntl.flock(f, fcntl.LOCK_EX)
-    output.run()
+if args.dry_run:
+    for a in output.get_args():
+        if a.startswith('-'):
+            print(a, file=sys.stderr, end=" ")
+        else:
+            print(f"'{a}' \\", file=sys.stderr)
+    print("", file=sys.stderr)
+else:
+    # basic flock queueing for multiple invocations
+    with open("/tmp/vrcencode", "w+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        output.run()
 
 # 2 pass doesn't work that well 
 #with tempfile.TemporaryDirectory() as tmpdirname:
