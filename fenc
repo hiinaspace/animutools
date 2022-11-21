@@ -187,9 +187,13 @@ if args.dry_run:
     print("", file=sys.stderr)
 else:
     # basic flock queueing for multiple invocations
-    with open("/tmp/vrcencode", "w+") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
+    if os.name == 'nt':
+        # no fnctl on windows
         output.run()
+    else:
+        with open("/tmp/vrcencode", "w+") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            output.run()
 
 # 2 pass doesn't work that well 
 #with tempfile.TemporaryDirectory() as tmpdirname:
