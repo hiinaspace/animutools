@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 import ffmpeg
 import sys
-import fcntl
 import os
+if os.name == 'posix':
+    import fcntl
 import argparse
 import tempfile
 
@@ -187,13 +188,13 @@ if args.dry_run:
     print("", file=sys.stderr)
 else:
     # basic flock queueing for multiple invocations
-    if os.name == 'nt':
-        # no fnctl on windows
-        output.run()
-    else:
+    if os.name == 'posix':
         with open("/tmp/vrcencode", "w+") as f:
             fcntl.flock(f, fcntl.LOCK_EX)
             output.run()
+    else:
+        # no fnctl on windows
+        output.run()
 
 # 2 pass doesn't work that well 
 #with tempfile.TemporaryDirectory() as tmpdirname:
