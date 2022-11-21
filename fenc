@@ -23,6 +23,7 @@ parser.add_argument("--buffer_duration", type=float,
 parser.add_argument("--hls", action='store_true', help="output HLS playlist, with ts chunks in an {outfile}.ts directory")
 parser.add_argument("--hls_time", default=4, help="hls segment time in seconds")
 parser.add_argument("--dry_run", action='store_true', help="just output ffmpeg invocation and exit")
+parser.add_argument("--remux", action='store_true', help="instead of transcoding, just remux (to hls)")
 parser.add_argument("--probe", action='store_true')
 args = parser.parse_args()
 
@@ -127,6 +128,10 @@ opts = {
         #'f': 'mp4',
         }
 
+# if remuxing, don't need the other stuff, restart
+if args.remux:
+    opts = { 'c': 'copy' }
+
 if args.hls or os.path.splitext(outfile)[1] == ".m3u8":
     # encode as HLS, a bunch of .ts segment files + .m3u8 playlist.
     # Originaly I thought you'd need to do this to work around AVPro's
@@ -155,7 +160,8 @@ if args.hls or os.path.splitext(outfile)[1] == ".m3u8":
     opts['hls_list_size'] = 0
 
     # store chunks in a directory alongside the m3u8 playlist for convenience
-    os.makedirs(f"{outfile}.ts", exist_ok=True)
+    if not args.dry_run:
+        os.makedirs(f"{outfile}.ts", exist_ok=True)
     opts['hls_base_url'] = f"{os.path.basename(outfile)}.ts/"
     opts['hls_segment_filename'] = f"{outfile}.ts/%04d.ts"
 else:
@@ -167,7 +173,10 @@ if args.test:
 
 audio = ffin[f'a:{audio_track}']
 
-output = ffmpeg.overwrite_output(ffmpeg.output(ffv, audio, outfile, **opts))
+if args.remux:
+    output = ffmpeg.overwrite_output(ffmpeg.output(ffin, outfile, **opts))
+else:
+    output = ffmpeg.overwrite_output(ffmpeg.output(ffv, audio, outfile, **opts))
 
 if args.dry_run:
     for a in output.get_args():
