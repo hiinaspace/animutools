@@ -13,6 +13,8 @@ out = sys.argv[-1]
 #audio = ffmpeg.filter([ffmpeg.input(f).audio for f in ins], 'amix', inputs=len(ins))
 def singleencode(f, horiz, vert):
     ff = ffmpeg.input(f).video
+    # sample weird framerates back to the usual 24000/1001
+    ff = ff.filter('fps', fps='ntsc_film')
     if f.endswith('.mkv'):
         ff = ff.filter('subtitles', filename=f)
     return ff.filter('scale',horiz,vert).filter('setsar','1').filter('format', 'yuv420p')
