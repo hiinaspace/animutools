@@ -102,12 +102,8 @@ bufsize = int(args.target_bitrate * args.buffer_duration)
 
 opts = {
         'c:v': 'libx264',
-        # XXX the ffmpeg default somehow likes to drop the encoding to `main`
-        # compatability. This sounds benign, but for whatever reason, if AVPro
-        # sees a main profile mp4 file it has really awful buffering behavior
-        # that interacts badly with cloudflare and really screws up audio
-        # syncing.  I can't see any bad effects with forcing high profile now,
-        # so just do it.
+        # I'm not sure this is entirely necessary, but all devices support
+        # high profile by now, so it doesn't seem harmful to do.
         'profile:v': 'high',
         # for streaming the GOP size and keyframe interval should apparently
         # be fairly short, here 2 seconds at 24fps. ffmpeg default is 250, so
@@ -134,12 +130,8 @@ if args.remux:
     opts = { 'c': 'copy' }
 
 if args.hls or os.path.splitext(outfile)[1] == ".m3u8":
-    # encode as HLS, a bunch of .ts segment files + .m3u8 playlist.
-    # Originaly I thought you'd need to do this to work around AVPro's
-    # awful HTTP buffering behavior. However it turns out forcing h264 high profile
-    # instead of letting h264 drop to main profile solves all those issues.
-    # so unless you need HLS or implement actual multiple var formats, this
-    # probably isn't useful.
+    # encode as HLS, a bunch of .ts segment files + .m3u8 playlist,
+    # which works around MediaFoundation's poor behavior (see README.md)
 
     # i'm not sure how necessary it is to make the keyframes nice and tidy
     # kind of annoying to have to guess the output framerate.
