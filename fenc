@@ -110,7 +110,7 @@ opts = {
         # 10 seconds.
         'g': 48,
         'keyint_min': 48,
-        'preset': 'fast',
+        'preset': 'veryfast',
         'tune': 'animation',
         'crf': '22',
         #'b:v': '2500K',
@@ -188,20 +188,9 @@ else:
         # no fnctl on windows
         output.run()
 
-# 2 pass doesn't work that well 
-#with tempfile.TemporaryDirectory() as tmpdirname:
-#    opts['passlogfile'] = f"{tmpdirname}/passlogfile"
-#
-#    opts['pass'] = 1
-#    pass1 = ffmpeg.output(ffv, audio, "/dev/null", **opts)
-#    opts['pass'] = 2
-#    pass2 = ffmpeg.output(ffv, audio, outfile, **opts)
-#
-#    print(f"will run {' '.join(pass1.get_args())=}", file=sys.stderr)
-#    print(f"then run {' '.join(pass2.get_args())=}", file=sys.stderr)
-#
-#    # basic flock queueing for multiple invocations
-#    with open("/tmp/vrcencode", "w+") as f:
-#        fcntl.flock(f, fcntl.LOCK_EX)
-#        pass1.run(overwrite_output=True)
-#        pass2.run()
+# hack to make the pyproject "executable" concept work
+# https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
+# the rest of the stuff in the file actually just runs on import
+# maybe there's a better way to do this.
+def main():
+    pass
