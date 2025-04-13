@@ -27,7 +27,7 @@ def encode(ins, out):
     hstacks = [ffmpeg.filter(chunk, 'hstack', inputs=columns) for chunk in chunked(subs, columns)]
     vstack = ffmpeg.filter(hstacks, 'vstack', inputs=len(hstacks))
     audio = [ffmpeg.input(f).audio for f in ins if not f.endswith('.jpg')]
-    audio = [a.filter('dynaudnorm') for a in audio]
+    audio = [a.filter('loudnorm') for a in audio]
     
     opts = {
             'map_chapters': '-1', # don't copy chapters

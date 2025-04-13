@@ -110,7 +110,7 @@ opts = {
         # 10 seconds.
         'g': 48,
         'keyint_min': 48,
-        'preset': 'veryfast',
+        'preset': 'medium',
         'tune': 'animation',
         'crf': '22',
         #'b:v': '2500K',
