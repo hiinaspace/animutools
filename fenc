@@ -15,7 +15,7 @@ parser.add_argument("--subtitle_file")
 parser.add_argument("--downscale_720p", action='store_true')
 parser.add_argument("--test", action='store_true')
 parser.add_argument("--target_bitrate", type=int,
-        default=2500,
+        default=5000,
         help='target bitrate in kb/s.')
 parser.add_argument("--buffer_duration", type=float,
         default=1,
