@@ -1,7 +1,7 @@
 [project]
 name = "animutools"
 version = "0.1.0"
-description = "Add your description here"
+description = "Tools for encoding anime videos with ffmpeg"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -15,4 +15,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.scripts]
-fenc = "animutools:fenc"
+fenc = "animutools.cli:main"
