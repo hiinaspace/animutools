@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import argparse
 import sys
+import logging
+from rich.logging import RichHandler
+from rich.console import Console
 from .core import process_video
 
 def parse_args():
@@ -32,6 +35,14 @@ def parse_args():
                         help="instead of transcoding, just remux (to hls)")
     parser.add_argument("--probe", action='store_true',
                         help="print media file information and exit")
+    parser.add_argument("--no-progress", action='store_true',
+                        help="disable progress bar and show raw ffmpeg output")
+    parser.add_argument("--overwrite", "-y", action='store_true',
+                        help="overwrite output files without asking")
+    parser.add_argument("--verbose", "-v", action='store_true',
+                        help="enable verbose logging output")
+    parser.add_argument("--quiet", "-q", action='store_true',
+                        help="suppress all non-error messages")
     
     return parser.parse_args()
 
@@ -39,12 +50,41 @@ def main():
     """Main entry point for the CLI."""
     try:
         args = parse_args()
+        
+        # Configure Rich logging
+        console = Console(stderr=True)
+        
+        # Set up simple Rich logging to stderr
+        level = logging.INFO
+        if args.verbose:
+            level = logging.DEBUG
+        elif args.quiet:
+            level = logging.ERROR
+            
+        logging.basicConfig(
+            level=level,
+            format="%(message)s",
+            datefmt="[%X]",
+            handlers=[
+                RichHandler(
+                    console=console,
+                    rich_tracebacks=True,
+                    markup=True,
+                    show_time=True,
+                    show_path=False
+                )
+            ]
+        )
+        
+        # Create logger for this module
+        logger = logging.getLogger("animutools")
+            
         process_video(args.infile, args.outfile, args)
     except KeyboardInterrupt:
-        print("\nEncoding interrupted by user", file=sys.stderr)
+        logging.error("Encoding interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logging.error(f"Error: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

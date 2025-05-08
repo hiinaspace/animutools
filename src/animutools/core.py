@@ -2,9 +2,16 @@
 import ffmpeg
 import sys
 import os
+import logging
 if os.name == 'posix':
     import fcntl
 import tempfile
+from .progress import run_ffmpeg_with_progress, probe_duration
+
+# Create module logger
+logger = logging.getLogger("animutools")
+from rich.console import Console
+from rich.table import Table
 
 def probe_video(infile):
     """Probe a video file and return audio/subtitle track information."""
@@ -39,7 +46,7 @@ def probe_video(infile):
                 if not found_eng_sub_track:
                     sub_track = sub_count
                     found_eng_sub_track = True
-                    print(f"found first english sub track at {sub_track}", file=sys.stderr)
+                    logger.info(f"Found first English subtitle track at {sub_track}")
                     if stream['codec_name'] == 'dvd_subtitle' or stream['codec_name'] == 'hdmv_pgs_subtitle':
                         sub_type = 'dvd'
             sub_count += 1
@@ -65,16 +72,119 @@ def process_video(infile, outfile, options):
     sub_type = video_info['sub_type']
 
     if options.probe:
-        import pprint
-        pprint.pprint(probe)
+        logger.info("Displaying media file information")
+        
+        # Rich tables for beautiful display
+        console = Console(stderr=True)
+        
+        # Video streams table
+        video_table = Table(title="Video Streams")
+        video_table.add_column("Stream Index", style="cyan")
+        video_table.add_column("Codec", style="green")
+        video_table.add_column("Resolution", style="magenta")
+        video_table.add_column("Framerate", style="yellow")
+        video_table.add_column("Language", style="blue")
+        
+        # Audio streams table
+        audio_table = Table(title="Audio Streams")
+        audio_table.add_column("Stream Index", style="cyan")
+        audio_table.add_column("Codec", style="green")
+        audio_table.add_column("Channels", style="magenta")
+        audio_table.add_column("Sample Rate", style="yellow")
+        audio_table.add_column("Language", style="blue")
+        audio_table.add_column("Selected", style="red")
+        
+        # Subtitle streams table
+        subtitle_table = Table(title="Subtitle Streams")
+        subtitle_table.add_column("Stream Index", style="cyan")
+        subtitle_table.add_column("Codec", style="green")
+        subtitle_table.add_column("Language", style="blue")
+        subtitle_table.add_column("Selected", style="red")
+        
+        # Fill tables with data
+        for stream in probe['streams']:
+            stream_index = stream.get('index', '')
+            codec = stream.get('codec_name', '')
+            tags = stream.get('tags', {})
+            language = tags.get('language', 'und')
+            
+            if stream['codec_type'] == 'video':
+                width = stream.get('width', '')
+                height = stream.get('height', '')
+                resolution = f"{width}x{height}" if width and height else "Unknown"
+                
+                frame_rate = "Unknown"
+                if 'avg_frame_rate' in stream:
+                    rate = stream['avg_frame_rate'].split('/')
+                    if len(rate) == 2 and int(rate[1]) > 0:
+                        frame_rate = f"{float(int(rate[0]) / int(rate[1])):.2f} fps"
+                
+                video_table.add_row(
+                    str(stream_index),
+                    codec,
+                    resolution,
+                    frame_rate,
+                    language
+                )
+            
+            elif stream['codec_type'] == 'audio':
+                channels = stream.get('channels', '')
+                sample_rate = f"{stream.get('sample_rate', '')} Hz" if 'sample_rate' in stream else "Unknown"
+                is_selected = "✓" if audio_track == stream_index else ""
+                
+                audio_table.add_row(
+                    str(stream_index),
+                    codec,
+                    str(channels),
+                    sample_rate,
+                    language,
+                    is_selected
+                )
+            
+            elif stream['codec_type'] == 'subtitle':
+                is_selected = "✓" if sub_track == stream_index else ""
+                
+                subtitle_table.add_row(
+                    str(stream_index),
+                    codec,
+                    language,
+                    is_selected
+                )
+        
+        # Format info table
+        format_table = Table(title="Format Information")
+        format_table.add_column("Property", style="cyan")
+        format_table.add_column("Value", style="green")
+        
+        format_info = probe.get('format', {})
+        if format_info:
+            duration = float(format_info.get('duration', 0))
+            duration_str = f"{int(duration // 3600)}:{int((duration % 3600) // 60):02d}:{int(duration % 60):02d}"
+            size_bytes = int(format_info.get('size', 0))
+            size_mb = size_bytes / (1024 * 1024)
+            
+            format_table.add_row("Filename", format_info.get('filename', 'Unknown'))
+            format_table.add_row("Format", format_info.get('format_long_name', 'Unknown'))
+            format_table.add_row("Duration", duration_str)
+            format_table.add_row("Size", f"{size_mb:.2f} MB ({size_bytes:,} bytes)")
+            format_table.add_row("Bitrate", f"{int(format_info.get('bit_rate', 0)) // 1000} kb/s")
+            
+        # Print all tables
+        console.print("\n[bold]Media File Information[/bold]")
+        console.print(format_table)
+        console.print(video_table)
+        console.print(audio_table)
+        console.print(subtitle_table)
+        
+        logger.info("Media information display complete")
         sys.exit(0)
 
     if options.subtitle_index is not None:
-        print(f"overriding sub track from {sub_track=} to {options.subtitle_index=}", file=sys.stderr)
+        logger.info(f"Overriding subtitle track from {sub_track=} to {options.subtitle_index=}")
         sub_track = options.subtitle_index
 
-    print(f"selecting {audio_track=} {audio_stream=}", file=sys.stderr)
-    print(f"selecting {sub_track=}", file=sys.stderr)
+    logger.info(f"Selecting {audio_track=}")
+    logger.info(f"Selecting {sub_track=}")
 
     # Set up ffmpeg inputs and filters
     ffin = ffmpeg.input(infile)
@@ -166,20 +276,28 @@ def process_video(infile, outfile, options):
         output = ffmpeg.overwrite_output(ffmpeg.output(ffv, audio, outfile, **opts))
 
     if options.dry_run:
+        cmd_line = []
         for a in output.get_args():
             if a.startswith('-'):
-                print(a, file=sys.stderr, end=" ")
+                cmd_line.append(a)
             else:
-                print(f"'{a}' \\", file=sys.stderr)
-        print("", file=sys.stderr)
+                cmd_line.append(f"'{a}'")
+        logger.info("FFmpeg command: " + " ".join(cmd_line))
     else:
         # basic flock queueing for multiple invocations
         if os.name == 'posix':
             with open("/tmp/vrcencode", "w+") as f:
                 fcntl.flock(f, fcntl.LOCK_EX)
-                output.run()
+                # Use rich progress bar if progress is enabled
+                if options.no_progress:
+                    output.run()
+                else:
+                    run_ffmpeg_with_progress(output, probe, "Encoding video", options.overwrite)
         else:
             # no fnctl on windows
-            output.run()
+            if options.no_progress:
+                output.run()
+            else:
+                run_ffmpeg_with_progress(output, probe, "Encoding video", options.overwrite)
 
     return True

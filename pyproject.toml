@@ -8,6 +8,7 @@ dependencies = [
     "ffmpeg-python>=0.2.0",
     "more-itertools>=10.6.0",
     "tqdm>=4.67.1",
+    "rich>=13.4.2",
 ]
 
 [build-system]
