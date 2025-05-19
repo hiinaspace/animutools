@@ -9,6 +9,7 @@ from rich.console import Console
 logger = logging.getLogger("animutools")
 console = Console()
 
+
 class ProgressServer:
     """TCP server for receiving progress updates from FFmpeg."""
 
@@ -24,17 +25,16 @@ class ProgressServer:
         """Start the progress server in a background thread."""
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind(('127.0.0.1', 0))  # Let OS assign a port
+        self.sock.bind(("127.0.0.1", 0))  # Let OS assign a port
         self.sock.listen(1)
 
         host, port = self.sock.getsockname()
-        self.url = f'tcp://{host}:{port}'
+        self.url = f"tcp://{host}:{port}"
         logger.debug(f"Progress server listening on {self.url}")
 
         self.running = True
         self.server_thread = threading.Thread(
-            target=self._accept_connections,
-            daemon=True
+            target=self._accept_connections, daemon=True
         )
         self.server_thread.start()
         return self.url
@@ -50,14 +50,14 @@ class ProgressServer:
 
                 # Only handle one client at a time
                 if self.client_thread and self.client_thread.is_alive():
-                    logger.warning("Already handling a client, rejecting new connection")
+                    logger.warning(
+                        "Already handling a client, rejecting new connection"
+                    )
                     client_sock.close()
                     continue
 
                 self.client_thread = threading.Thread(
-                    target=self._handle_client,
-                    args=(client_sock,),
-                    daemon=True
+                    target=self._handle_client, args=(client_sock,), daemon=True
                 )
                 self.client_thread.start()
             except socket.timeout:
@@ -70,12 +70,12 @@ class ProgressServer:
 
     def _handle_client(self, client_sock):
         """Handle progress updates from an FFmpeg client."""
-        buffer = b''
+        buffer = b""
         client_sock.settimeout(5.0)  # Prevent hanging if FFmpeg stops sending
 
         try:
             # Notify that we're ready to receive updates
-            self.update_callback('start', 'connected')
+            self.update_callback("start", "connected")
 
             while self.running:
                 try:
@@ -86,13 +86,13 @@ class ProgressServer:
                     buffer += chunk
 
                     # Process complete lines
-                    while b'\n' in buffer:
-                        line_bytes, buffer = buffer.split(b'\n', 1)
-                        line = line_bytes.decode(errors='ignore').strip()
+                    while b"\n" in buffer:
+                        line_bytes, buffer = buffer.split(b"\n", 1)
+                        line = line_bytes.decode(errors="ignore").strip()
                         if not line:
                             continue
 
-                        parts = line.split('=', 1)
+                        parts = line.split("=", 1)
                         key = parts[0].strip() if len(parts) > 0 else None
                         value = parts[1].strip() if len(parts) > 1 else None
 
@@ -130,17 +130,21 @@ class ProgressServer:
 
         logger.debug("Progress server stopped")
 
+
 def probe_duration(probe_result):
     """Extract duration from FFmpeg probe result."""
     duration = 0
     try:
-        if 'format' in probe_result and 'duration' in probe_result['format']:
-            duration = float(probe_result['format']['duration'])
+        if "format" in probe_result and "duration" in probe_result["format"]:
+            duration = float(probe_result["format"]["duration"])
     except (ValueError, TypeError):
         logger.warning("Could not parse video duration")
     return duration
 
-def run_ffmpeg_with_progress(ffmpeg_stream, probe_result, description="Encoding", overwrite=False):
+
+def run_ffmpeg_with_progress(
+    ffmpeg_stream, probe_result, description="Encoding", overwrite=False
+):
     """Run FFmpeg with a Rich progress bar.
 
     Args:
@@ -163,7 +167,7 @@ def run_ffmpeg_with_progress(ffmpeg_stream, probe_result, description="Encoding"
 
     # Add overwrite option if requested
     if overwrite:
-        ffmpeg_stream = ffmpeg_stream.global_args('-y')
+        ffmpeg_stream = ffmpeg_stream.global_args("-y")
 
     # Store the previous log level and temporarily reduce logging during encoding
     previous_level = logger.level
@@ -173,10 +177,10 @@ def run_ffmpeg_with_progress(ffmpeg_stream, probe_result, description="Encoding"
 
     try:
         with Progress(
-                    SpinnerColumn(),
-                    *Progress.get_default_columns(),
-                    TimeElapsedColumn(),
-                ) as progress:
+            SpinnerColumn(),
+            *Progress.get_default_columns(),
+            TimeElapsedColumn(),
+        ) as progress:
             # Create the task but don't start it until FFmpeg connects
             task = progress.add_task(description, total=duration, start=False)
 
@@ -187,18 +191,18 @@ def run_ffmpeg_with_progress(ffmpeg_stream, probe_result, description="Encoding"
             def update_progress(key, value):
                 nonlocal connected
 
-                if key == 'start' and value == 'connected':
+                if key == "start" and value == "connected":
                     # Start the progress bar when connection is established
                     connected = True
                     progress.start_task(task)
-                elif key == 'out_time_ms':
+                elif key == "out_time_ms":
                     try:
                         time_sec = float(value) / 1_000_000.0
                         # Set absolute position to avoid drift
                         progress.update(task, completed=min(time_sec, duration))
                     except (ValueError, TypeError, OverflowError):
                         pass
-                elif key == 'progress' and value == 'end':
+                elif key == "progress" and value == "end":
                     # Ensure we show 100% completion
                     progress.update(task, completed=duration)
 
@@ -210,12 +214,13 @@ def run_ffmpeg_with_progress(ffmpeg_stream, probe_result, description="Encoding"
 
             # Add progress URL to ffmpeg stream and disable FFmpeg's own stats output
             # Also add -hide_banner to reduce noise
-            stream_with_progress = ffmpeg_stream.global_args('-progress', progress_url, '-nostats', '-hide_banner')
+            stream_with_progress = ffmpeg_stream.global_args(
+                "-progress", progress_url, "-nostats", "-hide_banner"
+            )
 
             # Run FFmpeg in a subprocess, capturing output
             try:
                 import subprocess
-                import io
                 import queue
                 import re
 
@@ -229,7 +234,7 @@ def run_ffmpeg_with_progress(ffmpeg_stream, probe_result, description="Encoding"
                     stderr=subprocess.PIPE,
                     text=True,
                     bufsize=1,
-                    universal_newlines=True
+                    universal_newlines=True,
                 )
 
                 # Queue for output lines
@@ -250,10 +255,7 @@ def run_ffmpeg_with_progress(ffmpeg_stream, probe_result, description="Encoding"
                         logger.debug(f"Error reading FFmpeg output: {e}")
 
                 # Start output monitoring thread
-                output_thread = threading.Thread(
-                    target=monitor_output,
-                    daemon=True
-                )
+                output_thread = threading.Thread(target=monitor_output, daemon=True)
                 output_thread.start()
 
                 # Thread to process and filter output
@@ -264,11 +266,17 @@ def run_ffmpeg_with_progress(ffmpeg_stream, probe_result, description="Encoding"
                                 line = output_queue.get(timeout=0.5)
 
                                 # Skip progress lines (we handle them via TCP)
-                                if line.startswith('frame=') or line.startswith('size='):
+                                if line.startswith("frame=") or line.startswith(
+                                    "size="
+                                ):
                                     continue
 
                                 # Warnings and errors get higher log levels
-                                if re.search(r'error|err:|invalid|unable|fail|could not', line, re.IGNORECASE):
+                                if re.search(
+                                    r"error|err:|invalid|unable|fail|could not",
+                                    line,
+                                    re.IGNORECASE,
+                                ):
                                     logger.warning(f"FFmpeg: {line}")
                                 else:
                                     logger.debug(f"FFmpeg: {line}")
@@ -280,10 +288,7 @@ def run_ffmpeg_with_progress(ffmpeg_stream, probe_result, description="Encoding"
                         logger.debug(f"Error processing FFmpeg output: {e}")
 
                 # Start processing thread
-                process_thread = threading.Thread(
-                    target=process_output,
-                    daemon=True
-                )
+                process_thread = threading.Thread(target=process_output, daemon=True)
                 process_thread.start()
 
                 # Wait for completion
@@ -304,7 +309,9 @@ def run_ffmpeg_with_progress(ffmpeg_stream, probe_result, description="Encoding"
 
                     # If FFmpeg completed but never connected, that's strange
                     if not connected:
-                        logger.warning("FFmpeg completed without sending progress updates")
+                        logger.warning(
+                            "FFmpeg completed without sending progress updates"
+                        )
 
                     # Ensure progress bar reaches 100%
                     progress.update(task, completed=duration)
