@@ -191,6 +191,12 @@ def process_video(infile, outfile, options):
     ffv = ffin.video.filter('format', 'yuv420p')
     if options.downscale_720p:
         ffv = ffv.filter('scale', '1280','-1')
+    elif options.letterbox:
+        # Letterbox to fixed 16:9 aspect ratio (1.7777...)
+        # First, scale to fit within 1920x1080 while preserving aspect ratio
+        ffv = ffv.filter('scale', 'w=min(1920,iw):h=min(1080,ih):force_original_aspect_ratio=decrease')
+        # Then pad to 16:9 aspect ratio with black bars
+        ffv = ffv.filter('pad', 'w=max(iw,ih*16/9):h=max(ih,iw*9/16):x=(ow-iw)/2:y=(oh-ih)/2:color=black')
 
     # assume subtitle track matches the audio track
     if sub_type == 'text':

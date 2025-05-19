@@ -17,6 +17,8 @@ def parse_args():
                         help="external subtitle file to use instead of embedded subtitles")
     parser.add_argument("--downscale_720p", action='store_true', 
                         help="downscale video to 720p (1280x720)")
+    parser.add_argument("--letterbox", action='store_true', 
+                        help="letterbox the video to a fixed 16:9 aspect ratio with max 1920x1080 resolution")
     parser.add_argument("--test", action='store_true', 
                         help="encode only the first 60 seconds for testing")
     parser.add_argument("--target_bitrate", type=int,
