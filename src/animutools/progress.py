@@ -164,7 +164,7 @@ def run_ffmpeg_with_progress(
     # Keep track of whether ffmpeg completed successfully
     ffmpeg_success = False
     server = None
-    
+
     # Buffer to capture stderr if requested
     stderr_buffer = [] if capture_stderr else None
 
@@ -177,6 +177,8 @@ def run_ffmpeg_with_progress(
     if logger.level <= logging.INFO:
         # Set to INFO instead of WARNING to show important messages
         logger.setLevel(logging.INFO)
+
+    logger.info(f"Starting encoding process ({duration:.2f} seconds)")
 
     try:
         with Progress(
@@ -212,8 +214,6 @@ def run_ffmpeg_with_progress(
             # Start the progress server
             server = ProgressServer(update_progress)
             progress_url = server.start()
-
-            logger.info(f"Starting encoding process ({duration:.2f} seconds)")
 
             # Add progress URL to ffmpeg stream and disable FFmpeg's own stats output
             # Also add -hide_banner to reduce noise
@@ -347,7 +347,7 @@ def run_ffmpeg_with_progress(
 
         # Restore previous log level
         logger.setLevel(previous_level)
-        
+
         # Return captured stderr if requested
         if capture_stderr:
             return '\n'.join(stderr_buffer)
