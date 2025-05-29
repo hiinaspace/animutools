@@ -3,7 +3,6 @@ import argparse
 import sys
 import logging
 from rich.logging import RichHandler
-from rich.console import Console
 from .core import process_video
 
 
@@ -96,9 +95,6 @@ def main():
     try:
         args = parse_args()
 
-        # Configure Rich logging
-        console = Console(stderr=True)
-
         # Set up simple Rich logging to stderr
         level = logging.INFO
         if args.verbose:
@@ -108,15 +104,9 @@ def main():
 
         logging.basicConfig(
             level=level,
-            format="%(message)s",
-            datefmt="[%X]",
             handlers=[
                 RichHandler(
-                    console=console,
-                    rich_tracebacks=True,
-                    markup=True,
-                    show_time=True,
-                    show_path=False,
+                    level=level,
                 )
             ],
         )

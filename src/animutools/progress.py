@@ -3,12 +3,8 @@ import socket
 import logging
 import threading
 from rich.progress import Progress, TimeElapsedColumn, SpinnerColumn
-from rich.console import Console
 
-# Create logger but don't configure it - CLI will handle configuration
 logger = logging.getLogger("animutools")
-console = Console()
-
 
 class ProgressServer:
     """TCP server for receiving progress updates from FFmpeg."""
