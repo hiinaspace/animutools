@@ -143,7 +143,7 @@ def probe_duration(probe_result):
 
 
 def run_ffmpeg_with_progress(
-    ffmpeg_stream, probe_result, description="Encoding", overwrite=False
+    ffmpeg_stream, probe_result, description="Encoding", overwrite=False, capture_stderr=False
 ):
     """Run FFmpeg with a Rich progress bar.
 
@@ -164,6 +164,9 @@ def run_ffmpeg_with_progress(
     # Keep track of whether ffmpeg completed successfully
     ffmpeg_success = False
     server = None
+    
+    # Buffer to capture stderr if requested
+    stderr_buffer = [] if capture_stderr else None
 
     # Add overwrite option if requested
     if overwrite:
@@ -247,6 +250,9 @@ def run_ffmpeg_with_progress(
                         for line in process.stderr:
                             line = line.strip()
                             if line and not stop_monitoring.is_set():
+                                # Capture stderr if requested
+                                if capture_stderr:
+                                    stderr_buffer.append(line)
                                 output_queue.put(line)
                     except (ValueError, IOError):
                         # Pipe may be closed
@@ -341,3 +347,8 @@ def run_ffmpeg_with_progress(
 
         # Restore previous log level
         logger.setLevel(previous_level)
+        
+        # Return captured stderr if requested
+        if capture_stderr:
+            return '\n'.join(stderr_buffer)
+        return None

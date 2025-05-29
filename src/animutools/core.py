@@ -27,13 +27,15 @@ def probe_video(infile):
     found_eng_sub_track = False
 
     # XXX clean up spaghetti logic through here
+    audio_streams = []  # Keep track of all audio streams
     for stream in probe["streams"]:
         # try to select jpn audio over english
-        if stream["codec_type"] == "audio" and "tags" in stream:
-            tags = stream["tags"]
-            if tags and "language" in tags and tags["language"] == "jpn":
-                audio_track = audio_count
-                audio_stream = stream
+        if stream["codec_type"] == "audio":
+            audio_streams.append(stream)
+            if "tags" in stream:
+                tags = stream["tags"]
+                if tags and "language" in tags and tags["language"] == "jpn":
+                    audio_track = audio_count
             audio_count += 1
         if stream["codec_type"] == "subtitle":
             # try to select default stream
@@ -67,6 +69,10 @@ def probe_video(infile):
                         sub_type = "dvd"
             sub_count += 1
 
+    # Set audio_stream to the selected track
+    if audio_streams and audio_track < len(audio_streams):
+        audio_stream = audio_streams[audio_track]
+
     return {
         "probe": probe,
         "audio_track": audio_track,
@@ -78,10 +84,8 @@ def probe_video(infile):
     }
 
 
-def analyze_audio_loudness(infile, audio_track, audio_stream):
+def analyze_audio_loudness(infile, audio_track, audio_stream, probe_result):
     """Analyze audio loudness using FFmpeg loudnorm filter first pass."""
-    from rich.progress import Progress, SpinnerColumn, TextColumn
-
     # Get input sample rate for resampling back later
     input_sample_rate = audio_stream.get("sample_rate", "48000")
 
@@ -93,41 +97,35 @@ def analyze_audio_loudness(infile, audio_track, audio_stream):
         .global_args("-map", f"0:a:{audio_track}", "-hide_banner", "-nostats")
     )
 
-    # Run analysis with progress spinner
-    with Progress(
-        SpinnerColumn(), TextColumn("Analyzing audio loudness..."), transient=True
-    ) as progress:
-        progress.add_task("analysis", total=None)
+    # Run analysis with progress tracking and stderr capture
+    try:
+        stderr_output = run_ffmpeg_with_progress(
+            analysis_stream, 
+            probe_result, 
+            description="Analyzing audio loudness", 
+            capture_stderr=True
+        )
 
-        try:
-            result = analysis_stream.run(
-                capture_stdout=True, capture_stderr=True, text=True
-            )
-            stderr_output = result.stderr
+        # Extract JSON from stderr (loudnorm prints to stderr)
+        json_start = stderr_output.rfind("{")
+        json_end = stderr_output.rfind("}") + 1
 
-            # Extract JSON from stderr (loudnorm prints to stderr)
-            json_start = stderr_output.rfind("{")
-            json_end = stderr_output.rfind("}") + 1
-
-            if json_start == -1 or json_end == 0:
-                logger.error("Could not find loudnorm JSON output in FFmpeg stderr")
-                sys.exit(1)
-
-            json_str = stderr_output[json_start:json_end]
-            measurements = json.loads(json_str)
-
-            logger.info(
-                f"Audio analysis complete - Input loudness: {measurements.get('input_i', 'unknown')} LUFS"
-            )
-
-            return measurements, input_sample_rate
-
-        except ffmpeg.Error as e:
-            logger.error(f"Audio analysis failed: {e}")
+        if json_start == -1 or json_end == 0:
+            logger.error("Could not find loudnorm JSON output in FFmpeg stderr")
             sys.exit(1)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse loudnorm JSON output: {e}")
-            sys.exit(1)
+
+        json_str = stderr_output[json_start:json_end]
+        measurements = json.loads(json_str)
+
+        logger.info(
+            f"Audio analysis complete - Input loudness: {measurements.get('input_i', 'unknown')} LUFS"
+        )
+
+        return measurements, input_sample_rate
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse loudnorm JSON output: {e}")
+        sys.exit(1)
 
 
 def process_video(infile, outfile, options):
@@ -363,7 +361,7 @@ def process_video(infile, outfile, options):
     else:
         # Apply audio normalization
         measurements, input_sample_rate = analyze_audio_loudness(
-            infile, audio_track, audio_stream
+            infile, audio_track, audio_stream, probe
         )
 
         audio = ffin[f"a:{audio_track}"]
