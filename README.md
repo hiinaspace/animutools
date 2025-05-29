@@ -20,6 +20,14 @@ bitrate and stuff for playing in AVPro or unity player, i.e.
 - attempts to detect the jp language and eng subs for annoying EraiRaws rips.
   You may still need to specify the `--subtitle_index` still.
 
+### Audio Normalization
+
+VRChat's video players are mostly used to play stuff from YouTube, and stuff
+on YouTube usually has its audio mastered to -14 LUFS integrated (AFAICT, YouTube's
+audio normalization practices are weirdly cryptic). Thus, this script also
+normalizes the audio of its output files to -14 LUFS using ffmpeg's `loudnorm`
+filter in 2-pass mode.
+
 ### AVPro / MediaFoundation progressive mp4 streaming problems
 
 MediaFoundation is Microsoft's newish library and API for loading videos from

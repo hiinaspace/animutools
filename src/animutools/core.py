@@ -6,6 +6,7 @@ import logging
 
 if os.name == "posix":
     import fcntl
+import json
 from .progress import run_ffmpeg_with_progress
 
 # Create module logger
@@ -77,13 +78,65 @@ def probe_video(infile):
     }
 
 
+def analyze_audio_loudness(infile, audio_track, audio_stream):
+    """Analyze audio loudness using FFmpeg loudnorm filter first pass."""
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+
+    # Get input sample rate for resampling back later
+    input_sample_rate = audio_stream.get("sample_rate", "48000")
+
+    # Build FFmpeg command for loudnorm analysis
+    analysis_stream = (
+        ffmpeg.input(infile)
+        .audio.filter("loudnorm", print_format="json")
+        .output("pipe:", format="null")
+        .global_args("-map", f"0:a:{audio_track}", "-hide_banner", "-nostats")
+    )
+
+    # Run analysis with progress spinner
+    with Progress(
+        SpinnerColumn(), TextColumn("Analyzing audio loudness..."), transient=True
+    ) as progress:
+        progress.add_task("analysis", total=None)
+
+        try:
+            result = analysis_stream.run(
+                capture_stdout=True, capture_stderr=True, text=True
+            )
+            stderr_output = result.stderr
+
+            # Extract JSON from stderr (loudnorm prints to stderr)
+            json_start = stderr_output.rfind("{")
+            json_end = stderr_output.rfind("}") + 1
+
+            if json_start == -1 or json_end == 0:
+                logger.error("Could not find loudnorm JSON output in FFmpeg stderr")
+                sys.exit(1)
+
+            json_str = stderr_output[json_start:json_end]
+            measurements = json.loads(json_str)
+
+            logger.info(
+                f"Audio analysis complete - Input loudness: {measurements.get('input_i', 'unknown')} LUFS"
+            )
+
+            return measurements, input_sample_rate
+
+        except ffmpeg.Error as e:
+            logger.error(f"Audio analysis failed: {e}")
+            sys.exit(1)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse loudnorm JSON output: {e}")
+            sys.exit(1)
+
+
 def process_video(infile, outfile, options):
     """Process a video according to the provided options."""
     # Get video information
     video_info = probe_video(infile)
     probe = video_info["probe"]
     audio_track = video_info["audio_track"]
-    video_info["audio_stream"]
+    audio_stream = video_info["audio_stream"]
     sub_track = video_info["sub_track"]
     sub_type = video_info["sub_type"]
 
@@ -308,8 +361,32 @@ def process_video(infile, outfile, options):
     if options.remux:
         output = ffmpeg.overwrite_output(ffmpeg.output(ffin, outfile, **opts))
     else:
-        output = ffmpeg.overwrite_output(ffmpeg.output(ffv, audio, outfile, **opts))
+        # Apply audio normalization
+        measurements, input_sample_rate = analyze_audio_loudness(
+            infile, audio_track, audio_stream
+        )
 
+        audio = ffin[f"a:{audio_track}"]
+
+        # Apply loudnorm with measurements from analysis pass
+        audio = audio.filter(
+            "loudnorm",
+            linear=True,
+            i=-14.0,  # Target -14 LUFS
+            lra=7.0,
+            tp=-2.0,
+            measured_I=measurements["input_i"],
+            measured_tp=measurements["input_tp"],
+            measured_LRA=measurements["input_lra"],
+            measured_thresh=measurements["input_thresh"],
+        )
+
+        # Resample back to original sample rate using soxr
+        audio = audio.filter(
+            "aresample", resampler="soxr", out_sample_rate=input_sample_rate
+        )
+
+        output = ffmpeg.overwrite_output(ffmpeg.output(ffv, audio, outfile, **opts))
     if options.dry_run:
         cmd_line = []
         for a in output.get_args():
