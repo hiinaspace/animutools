@@ -8,7 +8,7 @@ from rich.table import Table
 from rich.prompt import Confirm
 from rich.logging import RichHandler
 from .core import process_video
-from animutools import console
+from .console import console
 
 logger = logging.getLogger("animutools")
 
@@ -180,7 +180,9 @@ def do_bulk_processing(args):
     logger.info(
         f"Scanning directory: {video_directory} for files ending with {valid_extensions}"
     )
-    for filename in os.listdir(video_directory):
+    filenames = os.listdir(video_directory)
+    filenames.sort()  # Sort in ascending order
+    for filename in filenames:
         if filename.lower().endswith(valid_extensions):
             input_filepath = os.path.join(video_directory, filename)
             logger.debug(f"Found matching file: {filename}")
@@ -241,12 +243,10 @@ def do_bulk_processing(args):
         sys.exit(0)
 
     table = Table(title="Bulk Processing Plan - Files to Encode")
-    table.add_column("Input Filename", style="cyan", overflow="fold", max_width=50)
+    table.add_column("Input Filename", style="cyan")
     table.add_column(
         "Guessed Output Filename",
         style="magenta",
-        overflow="fold",
-        max_width=50,
     )
     table.add_column("Output Exists?", style="green")
 
