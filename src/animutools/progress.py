@@ -6,6 +6,7 @@ from rich.progress import Progress, TimeElapsedColumn, SpinnerColumn
 
 logger = logging.getLogger("animutools")
 
+
 class ProgressServer:
     """TCP server for receiving progress updates from FFmpeg."""
 
@@ -139,7 +140,11 @@ def probe_duration(probe_result):
 
 
 def run_ffmpeg_with_progress(
-    ffmpeg_stream, probe_result, description="Encoding", overwrite=False, capture_stderr=False
+    ffmpeg_stream,
+    probe_result,
+    description="Encoding",
+    overwrite=False,
+    capture_stderr=False,
 ):
     """Run FFmpeg with a Rich progress bar.
 
@@ -346,5 +351,5 @@ def run_ffmpeg_with_progress(
 
         # Return captured stderr if requested
         if capture_stderr:
-            return '\n'.join(stderr_buffer)
+            return "\n".join(stderr_buffer)
         return None
