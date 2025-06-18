@@ -9,7 +9,7 @@ dependencies = [
     "more-itertools>=10.6.0",
     "tqdm>=4.67.1",
     "rich>=13.4.2",
-    "guessit",
+    "guessit>=3.8.0",
 ]
 
 [build-system]

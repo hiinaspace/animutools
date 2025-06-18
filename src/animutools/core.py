@@ -8,7 +8,7 @@ if os.name == "posix":
     import fcntl
 import json
 from .progress import run_ffmpeg_with_progress
-from rich.console import Console
+from animutools import console
 from rich.table import Table
 
 # Create module logger
@@ -142,8 +142,6 @@ def process_video(infile, outfile, options):
         logger.info("Displaying media file information")
 
         # Rich tables for beautiful display
-        console = Console(stderr=True)
-
         # Video streams table
         video_table = Table(title="Video Streams")
         video_table.add_column("Stream Index", style="cyan")
