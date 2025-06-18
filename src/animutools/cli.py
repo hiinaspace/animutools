@@ -9,10 +9,20 @@ from .core import process_video
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Encode video files with specific settings for anime content"
+        description="Encode video files with specific settings for anime content. When --bulk is used, infile is treated as a video directory and outfile as an output pattern supporting {num} for episode number."
     )
-    parser.add_argument("infile", help="input video file")
-    parser.add_argument("outfile", help="output video file")
+    parser.add_argument(
+        "infile", help="input video file (or directory if --bulk is used)"
+    )
+    parser.add_argument(
+        "outfile",
+        help="output video file (or output pattern if --bulk is used, e.g., 'processed_ep{num}.mkv'). Must contain {num} if --bulk is used.",
+    )
+    parser.add_argument(
+        "--bulk",
+        action="store_true",
+        help="process multiple files from a directory. Infile becomes video_directory and outfile becomes output_pattern that must contain {num} for the zero-padded episode number (e.g. 'ep{num}.mkv').",
+    )
     parser.add_argument(
         "--subtitle_index", type=int, help="specific subtitle track index to use"
     )

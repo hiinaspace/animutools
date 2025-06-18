@@ -8,11 +8,11 @@ if os.name == "posix":
     import fcntl
 import json
 from .progress import run_ffmpeg_with_progress
+from rich.console import Console
+from rich.table import Table
 
 # Create module logger
 logger = logging.getLogger("animutools")
-from rich.console import Console
-from rich.table import Table
 
 
 def probe_video(infile):
@@ -100,10 +100,10 @@ def analyze_audio_loudness(infile, audio_track, audio_stream, probe_result):
     # Run analysis with progress tracking and stderr capture
     try:
         stderr_output = run_ffmpeg_with_progress(
-            analysis_stream, 
-            probe_result, 
-            description="Analyzing audio loudness", 
-            capture_stderr=True
+            analysis_stream,
+            probe_result,
+            description="Analyzing audio loudness",
+            capture_stderr=True,
         )
 
         # Extract JSON from stderr (loudnorm prints to stderr)

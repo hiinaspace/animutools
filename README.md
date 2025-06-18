@@ -20,6 +20,15 @@ bitrate and stuff for playing in AVPro or unity player, i.e.
 - attempts to detect the jp language and eng subs for annoying EraiRaws rips.
   You may still need to specify the `--subtitle_index` still.
 
+### Bulk Processing with `--bulk`
+
+If you have a directory full of episodes (e.g., from a season pack), you can use the `--bulk` option to encode them all at once. `fenc` will use the `guessit` library to automatically parse episode numbers from the filenames.
+
+When using `--bulk`:
+*   The `infile` argument should be the path to the directory containing your video files (currently supports `.mkv` and `.mp4` files).
+*   The `outfile` argument should be an output pattern string that includes `{num}` as a placeholder for the zero-padded episode number. For example: `MyShow_S01E{num}.mkv`. The output files will be placed relative to the input directory if the pattern is just a filename, or at the specified path if the pattern includes directory components.
+*   `fenc` will display a table of planned operations (input file, output file, whether output exists) and ask for confirmation before starting the encoding process (unless `--overwrite` is also specified).
+
 ### Audio Normalization
 
 VRChat's video players are mostly used to play stuff from YouTube, and stuff
