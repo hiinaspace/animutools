@@ -87,6 +87,9 @@ def probe_video(infile):
 def analyze_audio_loudness(infile, audio_track, audio_stream, probe_result):
     """Analyze audio loudness using FFmpeg loudnorm filter first pass."""
     # Get input sample rate for resampling back later
+    if not audio_stream: # Should not happen if probe_video is called first
+        logger.warning("No audio stream found for loudness analysis. Skipping normalization.")
+        return None, None
     input_sample_rate = audio_stream.get("sample_rate", "48000")
 
     # Build FFmpeg command for loudnorm analysis
@@ -110,12 +113,16 @@ def analyze_audio_loudness(infile, audio_track, audio_stream, probe_result):
         json_start = stderr_output.rfind("{")
         json_end = stderr_output.rfind("}") + 1
 
-        if json_start == -1 or json_end == 0:
-            logger.error("Could not find loudnorm JSON output in FFmpeg stderr")
-            sys.exit(1)
+        if json_start == -1 or json_end == 0 or json_start > json_end :
+            logger.warning(f"Could not find valid loudnorm JSON output in FFmpeg stderr. Skipping audio normalization. stderr: {stderr_output}")
+            return None, None
 
         json_str = stderr_output[json_start:json_end]
-        measurements = json.loads(json_str)
+        try:
+            measurements = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse loudnorm JSON output: {e}. JSON string was: '{json_str}'. Skipping audio normalization.")
+            return None, None
 
         logger.info(
             f"Audio analysis complete - Input loudness: {measurements.get('input_i', 'unknown')} LUFS"
@@ -123,9 +130,9 @@ def analyze_audio_loudness(infile, audio_track, audio_stream, probe_result):
 
         return measurements, input_sample_rate
 
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse loudnorm JSON output: {e}")
-        sys.exit(1)
+    except Exception as e: # Catch other potential errors during analysis, including ffmpeg execution errors
+        logger.warning(f"An error occurred during audio loudness analysis: {e}. Skipping audio normalization.")
+        return None, None
 
 
 def process_video(infile, outfile, options):
@@ -374,25 +381,31 @@ def process_video(infile, outfile, options):
             infile, audio_track, audio_stream, probe
         )
 
-        audio = ffin[f"a:{audio_track}"]
+        audio = ffin[f"a:{audio_track}"] # Select the original audio stream
 
-        # Apply loudnorm with measurements from analysis pass
-        audio = audio.filter(
-            "loudnorm",
-            linear=True,
-            i=-14.0,  # Target -14 LUFS
-            lra=7.0,
-            tp=-2.0,
-            measured_I=measurements["input_i"],
-            measured_tp=measurements["input_tp"],
-            measured_LRA=measurements["input_lra"],
-            measured_thresh=measurements["input_thresh"],
-        )
+        if measurements and input_sample_rate:
+            logger.info("Applying loudnorm audio normalization.")
+            # Apply loudnorm with measurements from analysis pass
+            audio = audio.filter(
+                "loudnorm",
+                linear=True,
+                i=-14.0,  # Target -14 LUFS
+                lra=7.0,
+                tp=-2.0,
+                measured_I=measurements["input_i"],
+                measured_tp=measurements["input_tp"],
+                measured_LRA=measurements["input_lra"],
+                measured_thresh=measurements["input_thresh"],
+            )
 
-        # Resample back to original sample rate using soxr
-        audio = audio.filter(
-            "aresample", resampler="soxr", out_sample_rate=input_sample_rate
-        )
+            # Resample back to original sample rate using soxr
+            audio = audio.filter(
+                "aresample", resampler="soxr", out_sample_rate=input_sample_rate
+            )
+        else:
+            logger.warning(
+                "Skipping audio normalization and resampling due to analysis failure or lack of audio stream."
+            )
 
         output = ffmpeg.overwrite_output(ffmpeg.output(ffv, audio, outfile, **opts))
     if options.dry_run:
