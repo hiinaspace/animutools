@@ -19,6 +19,7 @@ bitrate and stuff for playing in AVPro or unity player, i.e.
     inconclusive.
 - attempts to detect the jp language and eng subs for annoying EraiRaws rips.
   You may still need to specify the `--subtitle_index` still.
+- `--scale W:H` allows arbitrary video scaling using ffmpeg's `scale` filter. For example, `--scale 1280:720` for 720p, or `--scale 640:-1` to scale to 640 width while maintaining aspect ratio.
 
 ### Bulk Processing with `--bulk`
 

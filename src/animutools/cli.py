@@ -38,9 +38,9 @@ def parse_args():
         help="external subtitle file to use instead of embedded subtitles",
     )
     parser.add_argument(
-        "--downscale_720p",
-        action="store_true",
-        help="downscale video to 720p (1280x720)",
+        "--scale",
+        type=str,
+        help="downscale/upscale video using ffmpeg scale filter (e.g., '1280:720', '640:-1'). Replaces --downscale_720p.",
     )
     parser.add_argument(
         "--letterbox",
