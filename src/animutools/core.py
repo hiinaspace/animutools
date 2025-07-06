@@ -87,8 +87,10 @@ def probe_video(infile):
 def analyze_audio_loudness(infile, audio_track, audio_stream, probe_result):
     """Analyze audio loudness using FFmpeg loudnorm filter first pass."""
     # Get input sample rate for resampling back later
-    if not audio_stream: # Should not happen if probe_video is called first
-        logger.warning("No audio stream found for loudness analysis. Skipping normalization.")
+    if not audio_stream:  # Should not happen if probe_video is called first
+        logger.warning(
+            "No audio stream found for loudness analysis. Skipping normalization."
+        )
         return None, None
     input_sample_rate = audio_stream.get("sample_rate", "48000")
 
@@ -113,15 +115,19 @@ def analyze_audio_loudness(infile, audio_track, audio_stream, probe_result):
         json_start = stderr_output.rfind("{")
         json_end = stderr_output.rfind("}") + 1
 
-        if json_start == -1 or json_end == 0 or json_start > json_end :
-            logger.warning(f"Could not find valid loudnorm JSON output in FFmpeg stderr. Skipping audio normalization. stderr: {stderr_output}")
+        if json_start == -1 or json_end == 0 or json_start > json_end:
+            logger.warning(
+                f"Could not find valid loudnorm JSON output in FFmpeg stderr. Skipping audio normalization. stderr: {stderr_output}"
+            )
             return None, None
 
         json_str = stderr_output[json_start:json_end]
         try:
             measurements = json.loads(json_str)
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse loudnorm JSON output: {e}. JSON string was: '{json_str}'. Skipping audio normalization.")
+            logger.warning(
+                f"Failed to parse loudnorm JSON output: {e}. JSON string was: '{json_str}'. Skipping audio normalization."
+            )
             return None, None
 
         logger.info(
@@ -130,8 +136,10 @@ def analyze_audio_loudness(infile, audio_track, audio_stream, probe_result):
 
         return measurements, input_sample_rate
 
-    except Exception as e: # Catch other potential errors during analysis, including ffmpeg execution errors
-        logger.warning(f"An error occurred during audio loudness analysis: {e}. Skipping audio normalization.")
+    except Exception as e:  # Catch other potential errors during analysis, including ffmpeg execution errors
+        logger.warning(
+            f"An error occurred during audio loudness analysis: {e}. Skipping audio normalization."
+        )
         return None, None
 
 
@@ -264,7 +272,7 @@ def process_video(infile, outfile, options):
     ffv = ffin.video.filter("format", "yuv420p")
     if options.scale:
         try:
-            width, height = options.scale.split(':')
+            width, height = options.scale.split(":")
             # Ensure width and height are valid numbers or -1
             # ffmpeg filter API expects strings for dimensions
             if not (width.isdigit() or width == "-1"):
@@ -274,7 +282,9 @@ def process_video(infile, outfile, options):
             ffv = ffv.filter("scale", width, height)
             logger.info(f"Scaling video to {width}x{height}")
         except ValueError as e:
-            logger.error(f"Invalid scale format '{options.scale}'. Expected 'width:height' (e.g., '1280:720' or '640:-1'). Error: {e}")
+            logger.error(
+                f"Invalid scale format '{options.scale}'. Expected 'width:height' (e.g., '1280:720' or '640:-1'). Error: {e}"
+            )
             sys.exit(1)
     elif options.letterbox:
         # Letterbox to fixed 16:9 aspect ratio (1.7777...)
@@ -381,7 +391,7 @@ def process_video(infile, outfile, options):
             infile, audio_track, audio_stream, probe
         )
 
-        audio = ffin[f"a:{audio_track}"] # Select the original audio stream
+        audio = ffin[f"a:{audio_track}"]  # Select the original audio stream
 
         if measurements and input_sample_rate:
             logger.info("Applying loudnorm audio normalization.")
