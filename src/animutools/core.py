@@ -255,8 +255,20 @@ def process_video(infile, outfile, options):
     # Set up ffmpeg inputs and filters
     ffin = ffmpeg.input(infile)
     ffv = ffin.video.filter("format", "yuv420p")
-    if options.downscale_720p:
-        ffv = ffv.filter("scale", "1280", "-1")
+    if options.scale:
+        try:
+            width, height = options.scale.split(':')
+            # Ensure width and height are valid numbers or -1
+            # ffmpeg filter API expects strings for dimensions
+            if not (width.isdigit() or width == "-1"):
+                raise ValueError("Width must be a number or -1")
+            if not (height.isdigit() or height == "-1"):
+                raise ValueError("Height must be a number or -1")
+            ffv = ffv.filter("scale", width, height)
+            logger.info(f"Scaling video to {width}x{height}")
+        except ValueError as e:
+            logger.error(f"Invalid scale format '{options.scale}'. Expected 'width:height' (e.g., '1280:720' or '640:-1'). Error: {e}")
+            sys.exit(1)
     elif options.letterbox:
         # Letterbox to fixed 16:9 aspect ratio (1.7777...)
         # First, scale to fit within 1920x1080 while preserving aspect ratio
