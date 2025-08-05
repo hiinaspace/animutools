@@ -3,6 +3,7 @@ import argparse
 import sys
 import logging
 import os
+from pathlib import Path
 from guessit import guessit
 from rich.table import Table
 from rich.prompt import Confirm
@@ -180,13 +181,16 @@ def do_bulk_processing(args):
     logger.info(
         f"Scanning directory: {video_directory} for files ending with {valid_extensions}"
     )
-    filenames = os.listdir(video_directory)
+    video_path = Path(video_directory)
+    filenames = [p for p in video_path.glob("**/*.mkv")] + [
+        p for p in video_path.glob("**/*.mp4")
+    ]
     filenames.sort()  # Sort in ascending order
     for filename in filenames:
-        if filename.lower().endswith(valid_extensions):
-            input_filepath = os.path.join(video_directory, filename)
+        if filename.suffix in valid_extensions:
+            input_filepath = filename
             logger.debug(f"Found matching file: {filename}")
-            info = guessit(filename)
+            info = guessit(filename.name)
             episode_number = info.get("episode")
 
             if isinstance(episode_number, int):
@@ -202,29 +206,14 @@ def do_bulk_processing(args):
                     sys.exit(1)
 
                 # Output files are in the same directory as input_filepath's directory
-                output_filepath = os.path.join(
-                    os.path.dirname(input_filepath), output_filename_part
-                )
+                output_filepath = input_filepath.parent.joinpath(output_filename_part)
 
-                # Ensure output directory exists if pattern includes a path structure
-                # This check is more robust if output_filepath could be outside video_directory
-                output_dir_for_file = os.path.dirname(output_filepath)
-                if output_dir_for_file and not os.path.exists(output_dir_for_file):
-                    try:
-                        os.makedirs(output_dir_for_file, exist_ok=True)
-                        logger.info(f"Created output directory: {output_dir_for_file}")
-                    except OSError as e:
-                        logger.error(
-                            f"Could not create output directory {output_dir_for_file} for {output_filename_part}: {e}. Skipping."
-                        )
-                        continue
-
-                output_exists = os.path.exists(output_filepath)
+                output_exists = output_filepath.exists()
                 files_to_process.append(
                     {
-                        "input": input_filepath,
-                        "output": output_filepath,
-                        "original_input_filename": filename,
+                        "input": str(input_filepath),
+                        "output": str(output_filepath),
+                        "original_input_filename": filename.name,
                         "exists": output_exists,
                     }
                 )
