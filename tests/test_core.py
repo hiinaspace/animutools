@@ -244,3 +244,63 @@ class TestProcessVideo:
 
         assert result is True
         assert output_file.exists()
+
+
+class TestInterruptHandling:
+    """Tests for keyboard interrupt handling during encoding."""
+
+    def test_keyboard_interrupt_during_audio_analysis(self, fake_ffmpeg_env, sample_video_file, output_file, monkeypatch):
+        """Test that CTRL+C during audio analysis stops the entire process."""
+        class Args:
+            subtitle_index = None
+            subtitle_file = None
+            scale = None
+            letterbox = False
+            target_bitrate = 10000
+            buffer_duration = 1
+            hls = False
+            hls_time = 4
+            dry_run = False
+            remux = False
+            probe = False
+            no_progress = True
+            test = False
+            overwrite = True
+            verbose = False
+
+        args = Args()
+
+        # Track which functions were called
+        calls = {"analyze_called": False, "encoding_called": False}
+
+        # Import the module to patch
+        from animutools import core
+        from animutools.progress import run_ffmpeg_with_progress as original_run_ffmpeg
+
+        def mock_run_ffmpeg(*args_inner, **kwargs):
+            """Mock that raises KeyboardInterrupt during audio analysis."""
+            # Check if this is the audio analysis call (has capture_stderr=True)
+            if kwargs.get("capture_stderr", False):
+                calls["analyze_called"] = True
+                # Simulate user pressing CTRL+C during audio analysis
+                raise KeyboardInterrupt("User interrupted audio analysis")
+            else:
+                # This is the encoding call - it should NOT be reached
+                calls["encoding_called"] = True
+                return original_run_ffmpeg(*args_inner, **kwargs)
+
+        # Patch run_ffmpeg_with_progress in the core module's namespace
+        monkeypatch.setattr(core, "run_ffmpeg_with_progress", mock_run_ffmpeg)
+
+        # The process should raise KeyboardInterrupt, not continue to encoding
+        with pytest.raises(KeyboardInterrupt):
+            process_video(str(sample_video_file), str(output_file), args)
+
+        # Verify that audio analysis was called (where we interrupted)
+        assert calls["analyze_called"], "Audio analysis should have been called"
+
+        # CRITICAL: Encoding should NOT have been called after the interrupt
+        assert not calls["encoding_called"], "Encoding should NOT proceed after CTRL+C during audio analysis"
+
+        # Output file should NOT exist since we interrupted
+        assert not output_file.exists(), "Output file should not be created after interrupt"

@@ -136,6 +136,10 @@ def analyze_audio_loudness(infile, audio_track, audio_stream, probe_result):
 
         return measurements, input_sample_rate
 
+    except KeyboardInterrupt:
+        # Re-raise KeyboardInterrupt to propagate it up and stop the entire process
+        logger.warning("Audio analysis interrupted by user")
+        raise
     except Exception as e:  # Catch other potential errors during analysis, including ffmpeg execution errors
         logger.warning(
             f"An error occurred during audio loudness analysis: {e}. Skipping audio normalization."
