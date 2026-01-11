@@ -172,3 +172,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+image_cache
+multibox_assets
+multiboxwinter2026.csv
+torrent_urls.txt
