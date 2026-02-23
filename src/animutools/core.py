@@ -322,6 +322,16 @@ def process_video(infile, outfile, options):
         s2r = ffmpeg.filter_multi_output([subs, ffv], "scale2ref")
         ffv = s2r[1].overlay(s2r[0])
 
+    # burn secondary (e.g. JP) subtitles at the top of the screen
+    extra_subfile = getattr(options, "extra_subtitle_file", None)
+    if extra_subfile:
+        logger.info(f"Burning extra subtitles from {extra_subfile} (top-positioned)")
+        ffv = ffv.filter(
+            "subtitles",
+            filename=extra_subfile,
+            force_style="Alignment=8,MarginV=20",
+        )
+
     # cap bufsize based on expected buffer duration, so there aren't
     # bitrate spikes above it and thus buffer underruns during playback.
     bufsize = int(options.target_bitrate * options.buffer_duration)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import copy
 import sys
 import logging
 import os
@@ -37,6 +38,14 @@ def parse_args():
     parser.add_argument(
         "--subtitle_file",
         help="external subtitle file to use instead of embedded subtitles",
+    )
+    parser.add_argument(
+        "--extra_subtitle_file",
+        help="secondary subtitle file (e.g. JP subs) to burn at the top of the screen",
+    )
+    parser.add_argument(
+        "--extra_subtitle_dir",
+        help="directory containing secondary subtitle files matched by episode number (for --bulk mode)",
     )
     parser.add_argument(
         "--scale",
@@ -161,6 +170,17 @@ def main():
         sys.exit(1)
 
 
+def _find_extra_subtitle(directory, episode_number):
+    """Find a subtitle file in directory matching the given episode number using guessit."""
+    sub_dir = Path(directory)
+    for sub_path in sorted(sub_dir.glob("*.srt")):
+        info = guessit(sub_path.name)
+        ep = info.get("episode")
+        if ep == episode_number:
+            return str(sub_path)
+    return None
+
+
 def do_bulk_processing(args):
     video_directory = args.infile
     output_pattern = args.outfile
@@ -215,6 +235,7 @@ def do_bulk_processing(args):
                         "output": str(output_filepath),
                         "original_input_filename": filename.name,
                         "exists": output_exists,
+                        "episode_number": episode_number,
                     }
                 )
                 logger.debug(
@@ -279,9 +300,20 @@ def do_bulk_processing(args):
             f"Processing: '{file_info['original_input_filename']}' -> '{os.path.basename(output_f)}'"
         )
         try:
-            # Assuming process_video takes (infile, outfile, args_object)
-            # We pass the original 'args' object, which carries all other encoding options
-            process_video(input_f, output_f, args)
+            per_episode_args = copy.copy(args)
+            if args.extra_subtitle_dir:
+                ep_subfile = _find_extra_subtitle(
+                    args.extra_subtitle_dir, file_info["episode_number"]
+                )
+                if ep_subfile:
+                    per_episode_args.extra_subtitle_file = ep_subfile
+                    logger.info(f"Using extra subtitle: {ep_subfile}")
+                else:
+                    logger.warning(
+                        f"No extra subtitle found for episode {file_info['episode_number']} in {args.extra_subtitle_dir}"
+                    )
+                    per_episode_args.extra_subtitle_file = None
+            process_video(input_f, output_f, per_episode_args)
             successful_encodes += 1
             logger.info(f"Successfully processed: {os.path.basename(output_f)}")
         except Exception as e:
