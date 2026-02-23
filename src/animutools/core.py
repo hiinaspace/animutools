@@ -330,7 +330,7 @@ def process_video(infile, outfile, options):
             "subtitles",
             filename=extra_subfile,
             # alignments top center https://stackoverflow.com/a/69713997
-            force_style="Alignment=6,MarginV=20",
+            force_style="Alignment=6",
         )
 
     # cap bufsize based on expected buffer duration, so there aren't
