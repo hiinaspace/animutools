@@ -36,6 +36,9 @@ def parse_args():
         "--subtitle_index", type=int, help="specific subtitle track index to use"
     )
     parser.add_argument(
+        "--audio_index", type=int, help="specific audio track index to use"
+    )
+    parser.add_argument(
         "--subtitle_file",
         help="external subtitle file to use instead of embedded subtitles",
     )

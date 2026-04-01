@@ -77,6 +77,7 @@ def probe_video(infile):
         "probe": probe,
         "audio_track": audio_track,
         "audio_stream": audio_stream,
+        "audio_streams": audio_streams,
         "sub_track": sub_track,
         "sub_type": sub_type,
         "audio_count": audio_count,
@@ -154,6 +155,7 @@ def process_video(infile, outfile, options):
     probe = video_info["probe"]
     audio_track = video_info["audio_track"]
     audio_stream = video_info["audio_stream"]
+    audio_streams = video_info["audio_streams"]
     sub_track = video_info["sub_track"]
     sub_type = video_info["sub_type"]
 
@@ -267,6 +269,18 @@ def process_video(infile, outfile, options):
             f"Overriding subtitle track from {sub_track=} to {options.subtitle_index=}"
         )
         sub_track = options.subtitle_index
+
+    if options.audio_index is not None:
+        logger.info(
+            f"Overriding audio track from {audio_track=} to {options.audio_index=}"
+        )
+        audio_track = options.audio_index
+        if audio_track < len(audio_streams):
+            audio_stream = audio_streams[audio_track]
+        else:
+            logger.warning(
+                f"audio_index {audio_track} out of range ({len(audio_streams)} audio tracks found)"
+            )
 
     logger.info(f"Selecting {audio_track=}")
     logger.info(f"Selecting {sub_track=}")
