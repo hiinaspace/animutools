@@ -51,6 +51,11 @@ def parse_args():
         help="directory containing secondary subtitle files matched by episode number (for --bulk mode)",
     )
     parser.add_argument(
+        "--no_subtitles",
+        action="store_true",
+        help="do not burn any subtitles into the output video",
+    )
+    parser.add_argument(
         "--scale",
         type=str,
         help="downscale/upscale video using ffmpeg scale filter (e.g., '1280:720', '640:-1'). Replaces --downscale_720p.",

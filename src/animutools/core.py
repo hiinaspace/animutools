@@ -324,21 +324,22 @@ def process_video(infile, outfile, options):
         )
 
     # assume subtitle track matches the audio track
-    if sub_type == "text":
-        subfile = infile
-        if options.subtitle_file:
-            subfile = options.subtitle_file
+    if not getattr(options, "no_subtitles", False):
+        if sub_type == "text":
+            subfile = infile
+            if options.subtitle_file:
+                subfile = options.subtitle_file
 
-        ffv = ffv.filter("subtitles", filename=subfile, stream_index=sub_track)
-    else:
-        # burn the dvd subs on the image
-        subs = ffin[f"s:{sub_track}"]
-        s2r = ffmpeg.filter_multi_output([subs, ffv], "scale2ref")
-        ffv = s2r[1].overlay(s2r[0])
+            ffv = ffv.filter("subtitles", filename=subfile, stream_index=sub_track)
+        else:
+            # burn the dvd subs on the image
+            subs = ffin[f"s:{sub_track}"]
+            s2r = ffmpeg.filter_multi_output([subs, ffv], "scale2ref")
+            ffv = s2r[1].overlay(s2r[0])
 
     # burn secondary (e.g. JP) subtitles at the top of the screen
     extra_subfile = getattr(options, "extra_subtitle_file", None)
-    if extra_subfile:
+    if extra_subfile and not getattr(options, "no_subtitles", False):
         logger.info(f"Burning extra subtitles from {extra_subfile} (top-positioned)")
         ffv = ffv.filter(
             "subtitles",
