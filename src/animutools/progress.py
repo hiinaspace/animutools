@@ -62,11 +62,15 @@ class ProgressServer:
 
     def _accept_connections(self):
         """Accept incoming connections from FFmpeg."""
-        self.sock.settimeout(1.0)  # Allow checking self.running periodically
+        sock = self.sock
+        if sock is None:
+            return
+
+        sock.settimeout(1.0)  # Allow checking self.running periodically
 
         while self.running:
             try:
-                client_sock, addr = self.sock.accept()
+                client_sock, addr = sock.accept()
                 logger.debug(f"Connection from {addr}")
 
                 # Only handle one client at a time
@@ -164,9 +168,7 @@ def probe_duration(probe_result):
 
 
 def _is_progress_key(key):
-    return key in _PROGRESS_KEYS or (
-        key.startswith("stream_") and key.endswith("_q")
-    )
+    return key in _PROGRESS_KEYS or (key.startswith("stream_") and key.endswith("_q"))
 
 
 def _split_progress_line(line):

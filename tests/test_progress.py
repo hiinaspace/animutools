@@ -1,6 +1,5 @@
 """Tests for progress tracking functionality."""
 
-import pytest
 import ffmpeg
 import socket
 import threading
@@ -18,11 +17,7 @@ class TestProbeData:
 
     def test_probe_duration_from_format(self):
         """Test extracting duration from probe result."""
-        probe_result = {
-            "format": {
-                "duration": "123.45"
-            }
-        }
+        probe_result = {"format": {"duration": "123.45"}}
 
         duration = probe_duration(probe_result)
         assert duration == 123.45
@@ -36,20 +31,14 @@ class TestProbeData:
 
     def test_probe_duration_missing_duration(self):
         """Test handling missing duration in format."""
-        probe_result = {
-            "format": {}
-        }
+        probe_result = {"format": {}}
 
         duration = probe_duration(probe_result)
         assert duration == 0
 
     def test_probe_duration_invalid_value(self):
         """Test handling invalid duration value."""
-        probe_result = {
-            "format": {
-                "duration": "not_a_number"
-            }
-        }
+        probe_result = {"format": {"duration": "not_a_number"}}
 
         duration = probe_duration(probe_result)
         assert duration == 0
@@ -79,7 +68,7 @@ class TestFFmpegCommand:
         assert cmd.index("-hide_banner") < input_index
         assert cmd.index("-nostats") < input_index
         assert cmd.index("-progress") < input_index
-        assert "-progress" not in cmd[output_index + 1:]
+        assert "-progress" not in cmd[output_index + 1 :]
 
     def test_run_captures_fast_loudnorm_stderr(
         self, fake_ffmpeg_env, sample_video_file, monkeypatch
@@ -232,7 +221,7 @@ class TestProgressServer:
             updates.append((key, value))
 
         server = ProgressServer(callback)
-        url = server.start()
+        server.start()
 
         # Don't connect, just stop the server after a delay
         time.sleep(0.2)

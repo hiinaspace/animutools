@@ -99,9 +99,9 @@ def analyze_audio_loudness(
 
     # Build FFmpeg command for loudnorm analysis
     analysis_audio = ffmpeg.input(infile)[f"a:{audio_track}"]
-    analysis_stream = analysis_audio.filter(
-        "loudnorm", print_format="json"
-    ).output("pipe:", format="null")
+    analysis_stream = analysis_audio.filter("loudnorm", print_format="json").output(
+        "pipe:", format="null"
+    )
 
     # Run analysis with progress tracking and stderr capture
     try:
@@ -361,7 +361,7 @@ def process_video(infile, outfile, options):
     # bitrate spikes above it and thus buffer underruns during playback.
     bufsize = int(options.target_bitrate * options.buffer_duration)
 
-    opts = {
+    opts: dict[str, object] = {
         "c:v": "libx264",
         # I'm not sure this is entirely necessary, but all devices support
         # high profile by now, so it doesn't seem harmful to do.

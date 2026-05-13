@@ -1,7 +1,6 @@
 """Tests for core video processing functionality."""
 
 import pytest
-from pathlib import Path
 from animutools.core import probe_video, analyze_audio_loudness, process_video
 
 
@@ -34,7 +33,9 @@ class TestProbeVideo:
         assert "audio" in stream_types
         assert "subtitle" in stream_types
 
-    def test_probe_video_selects_japanese_audio(self, fake_ffmpeg_env, sample_video_file):
+    def test_probe_video_selects_japanese_audio(
+        self, fake_ffmpeg_env, sample_video_file
+    ):
         """Test that probe_video correctly selects Japanese audio track."""
         result = probe_video(str(sample_video_file))
 
@@ -47,7 +48,9 @@ class TestProbeVideo:
         if "tags" in audio_stream and "language" in audio_stream["tags"]:
             assert audio_stream["tags"]["language"] == "jpn"
 
-    def test_probe_video_selects_english_subtitle(self, fake_ffmpeg_env, sample_video_file):
+    def test_probe_video_selects_english_subtitle(
+        self, fake_ffmpeg_env, sample_video_file
+    ):
         """Test that probe_video correctly selects English subtitle track."""
         result = probe_video(str(sample_video_file))
 
@@ -83,7 +86,7 @@ class TestAnalyzeAudioLoudness:
             str(sample_video_file),
             video_info["audio_track"],
             video_info["audio_stream"],
-            video_info["probe"]
+            video_info["probe"],
         )
 
         # Should get measurements back
@@ -107,7 +110,7 @@ class TestAnalyzeAudioLoudness:
             str(sample_video_file),
             video_info["audio_track"],
             video_info["audio_stream"],
-            video_info["probe"]
+            video_info["probe"],
         )
 
         # Values should be string representations of numbers
@@ -122,8 +125,11 @@ class TestAnalyzeAudioLoudness:
 class TestProcessVideo:
     """Tests for full video processing pipeline."""
 
-    def test_process_video_creates_output(self, fake_ffmpeg_env, sample_video_file, output_file):
+    def test_process_video_creates_output(
+        self, fake_ffmpeg_env, sample_video_file, output_file
+    ):
         """Test that process_video creates an output file."""
+
         # Create a minimal args object
         class Args:
             subtitle_index = None
@@ -153,8 +159,11 @@ class TestProcessVideo:
         # Output file should exist
         assert output_file.exists()
 
-    def test_process_video_with_scale(self, fake_ffmpeg_env, sample_video_file, output_file):
+    def test_process_video_with_scale(
+        self, fake_ffmpeg_env, sample_video_file, output_file
+    ):
         """Test that process_video handles --scale flag."""
+
         class Args:
             subtitle_index = None
             subtitle_file = None
@@ -179,7 +188,9 @@ class TestProcessVideo:
         assert result is True
         assert output_file.exists()
 
-    def test_process_video_hls_output(self, fake_ffmpeg_env, sample_video_file, tmp_path):
+    def test_process_video_hls_output(
+        self, fake_ffmpeg_env, sample_video_file, tmp_path
+    ):
         """Test that process_video creates HLS output correctly."""
         output_m3u8 = tmp_path / "output.m3u8"
 
@@ -218,8 +229,11 @@ class TestProcessVideo:
         segments = list(segment_dir.glob("*.ts"))
         assert len(segments) > 0
 
-    def test_process_video_with_progress(self, fake_ffmpeg_env, sample_video_file, output_file):
+    def test_process_video_with_progress(
+        self, fake_ffmpeg_env, sample_video_file, output_file
+    ):
         """Test that process_video works with progress tracking enabled."""
+
         class Args:
             subtitle_index = None
             subtitle_file = None
@@ -249,8 +263,11 @@ class TestProcessVideo:
 class TestInterruptHandling:
     """Tests for keyboard interrupt handling during encoding."""
 
-    def test_keyboard_interrupt_during_audio_analysis(self, fake_ffmpeg_env, sample_video_file, output_file, monkeypatch):
+    def test_keyboard_interrupt_during_audio_analysis(
+        self, fake_ffmpeg_env, sample_video_file, output_file, monkeypatch
+    ):
         """Test that CTRL+C during audio analysis stops the entire process."""
+
         class Args:
             subtitle_index = None
             subtitle_file = None
@@ -300,7 +317,11 @@ class TestInterruptHandling:
         assert calls["analyze_called"], "Audio analysis should have been called"
 
         # CRITICAL: Encoding should NOT have been called after the interrupt
-        assert not calls["encoding_called"], "Encoding should NOT proceed after CTRL+C during audio analysis"
+        assert not calls["encoding_called"], (
+            "Encoding should NOT proceed after CTRL+C during audio analysis"
+        )
 
         # Output file should NOT exist since we interrupted
-        assert not output_file.exists(), "Output file should not be created after interrupt"
+        assert not output_file.exists(), (
+            "Output file should not be created after interrupt"
+        )

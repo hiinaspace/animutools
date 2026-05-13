@@ -18,9 +18,13 @@ from pathlib import Path
 
 # Default configuration (can be overridden by environment variables)
 FAKE_DURATION = float(os.environ.get("FAKE_FFMPEG_DURATION", "10.0"))
-FAKE_DELAY = float(os.environ.get("FAKE_FFMPEG_DELAY", "0.01"))  # Delay between progress updates
+FAKE_DELAY = float(
+    os.environ.get("FAKE_FFMPEG_DELAY", "0.01")
+)  # Delay between progress updates
 FAKE_EXIT_CODE = int(os.environ.get("FAKE_FFMPEG_EXIT_CODE", "0"))
-FAKE_UPDATE_FREQ = float(os.environ.get("FAKE_FFMPEG_UPDATE_FREQ", "0.5"))  # Seconds of "video" per update
+FAKE_UPDATE_FREQ = float(
+    os.environ.get("FAKE_FFMPEG_UPDATE_FREQ", "0.5")
+)  # Seconds of "video" per update
 
 
 def get_probe_data(input_file):
@@ -28,7 +32,7 @@ def get_probe_data(input_file):
     # Check if there's a custom fixture for this file
     fixture_path = os.environ.get("FAKE_FFMPEG_PROBE_FIXTURE")
     if fixture_path and os.path.exists(fixture_path):
-        with open(fixture_path, 'r') as f:
+        with open(fixture_path, "r") as f:
             return json.load(f)
 
     # Default probe data for a simple video with Japanese audio and English subs
@@ -41,7 +45,7 @@ def get_probe_data(input_file):
                 "width": 1920,
                 "height": 1080,
                 "avg_frame_rate": "24000/1001",
-                "duration": str(FAKE_DURATION)
+                "duration": str(FAKE_DURATION),
             },
             {
                 "index": 1,
@@ -49,21 +53,15 @@ def get_probe_data(input_file):
                 "codec_type": "audio",
                 "channels": 2,
                 "sample_rate": "48000",
-                "tags": {
-                    "language": "jpn"
-                }
+                "tags": {"language": "jpn"},
             },
             {
                 "index": 2,
                 "codec_name": "subrip",
                 "codec_type": "subtitle",
-                "tags": {
-                    "language": "eng"
-                },
-                "disposition": {
-                    "default": 1
-                }
-            }
+                "tags": {"language": "eng"},
+                "disposition": {"default": 1},
+            },
         ],
         "format": {
             "filename": str(input_file),
@@ -71,8 +69,8 @@ def get_probe_data(input_file):
             "format_long_name": "Matroska / WebM",
             "duration": str(FAKE_DURATION),
             "size": "104857600",
-            "bit_rate": "8388608"
-        }
+            "bit_rate": "8388608",
+        },
     }
 
 
@@ -88,7 +86,7 @@ def get_loudnorm_json():
         "output_lra": "7.0",
         "output_thresh": "-24.5",
         "normalization_type": "dynamic",
-        "target_offset": "2.5"
+        "target_offset": "2.5",
     }
 
 
@@ -122,7 +120,9 @@ def send_progress(tcp_url, duration):
 
             # Send progress in ffmpeg format
             out_time_ms = int(min(current_time, duration) * 1_000_000)
-            progress_data = f"frame={frame}\nout_time_ms={out_time_ms}\nprogress=continue\n"
+            progress_data = (
+                f"frame={frame}\nout_time_ms={out_time_ms}\nprogress=continue\n"
+            )
             sock.sendall(progress_data.encode())
 
         # Send final update
@@ -159,7 +159,12 @@ def is_loudnorm_analysis(args):
     """Check if this is a loudnorm analysis pass."""
     # Loudnorm analysis has: -filter:a loudnorm with print_format=json and -f null
     args_str = " ".join(args)
-    return "loudnorm" in args_str and "print_format=json" in args_str and "-f" in args and "null" in args
+    return (
+        "loudnorm" in args_str
+        and "print_format=json" in args_str
+        and "-f" in args
+        and "null" in args
+    )
 
 
 def main():
@@ -195,12 +200,40 @@ def main():
 
     # Track flags that take arguments
     skip_next = False
-    flag_with_args = {'-progress', '-i', '-map', '-filter:a', '-c:v', '-c:a', '-c',
-                      '-vf', '-af', '-f', '-profile:v', '-preset', '-tune', '-crf',
-                      '-maxrate', '-bufsize', '-b:v', '-b:a', '-ac', '-t', '-r', '-g',
-                      '-keyint_min', '-force_key_frames:v', '-hls_time', '-hls_playlist_type',
-                      '-hls_list_size', '-hls_base_url', '-hls_segment_filename', '-movflags',
-                      '-global_args', '-y'}
+    flag_with_args = {
+        "-progress",
+        "-i",
+        "-map",
+        "-filter:a",
+        "-c:v",
+        "-c:a",
+        "-c",
+        "-vf",
+        "-af",
+        "-f",
+        "-profile:v",
+        "-preset",
+        "-tune",
+        "-crf",
+        "-maxrate",
+        "-bufsize",
+        "-b:v",
+        "-b:a",
+        "-ac",
+        "-t",
+        "-r",
+        "-g",
+        "-keyint_min",
+        "-force_key_frames:v",
+        "-hls_time",
+        "-hls_playlist_type",
+        "-hls_list_size",
+        "-hls_base_url",
+        "-hls_segment_filename",
+        "-movflags",
+        "-global_args",
+        "-y",
+    }
 
     for i, arg in enumerate(args):
         if skip_next:
@@ -249,7 +282,10 @@ def main():
     # Print some ffmpeg-like output
     print("ffmpeg version fake-ffmpeg", file=sys.stderr)
     print(f"Input #0, matroska,webm, from '{input_file}':", file=sys.stderr)
-    print(f"  Duration: {FAKE_DURATION:.2f}, start: 0.000000, bitrate: 8388 kb/s", file=sys.stderr)
+    print(
+        f"  Duration: {FAKE_DURATION:.2f}, start: 0.000000, bitrate: 8388 kb/s",
+        file=sys.stderr,
+    )
     print(f"Output #0, mp4, to '{output_file}':", file=sys.stderr)
 
     # Send progress if requested
@@ -270,7 +306,9 @@ def main():
         # Handle HLS output (creates directory with segments)
         if output_path.suffix == ".m3u8":
             # Create the playlist file
-            output_path.write_text("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:4\n#EXT-X-ENDLIST\n")
+            output_path.write_text(
+                "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:4\n#EXT-X-ENDLIST\n"
+            )
 
             # Create segment directory if specified in args
             for i, arg in enumerate(args):

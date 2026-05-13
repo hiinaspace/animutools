@@ -32,6 +32,7 @@ def fake_ffmpeg_bin(tmp_path_factory):
     else:
         # On Windows, create command shims that resolve before real ffmpeg.exe.
         import shutil
+
         for name, link in (("ffmpeg", ffmpeg_link), ("ffprobe", ffprobe_link)):
             script_copy = link.with_suffix(".py")
             shutil.copy(fake_script, script_copy)
@@ -104,7 +105,7 @@ def sample_probe_data():
                 "width": 1920,
                 "height": 1080,
                 "avg_frame_rate": "24000/1001",
-                "duration": "10.0"
+                "duration": "10.0",
             },
             {
                 "index": 1,
@@ -112,21 +113,15 @@ def sample_probe_data():
                 "codec_type": "audio",
                 "channels": 2,
                 "sample_rate": "48000",
-                "tags": {
-                    "language": "jpn"
-                }
+                "tags": {"language": "jpn"},
             },
             {
                 "index": 2,
                 "codec_name": "subrip",
                 "codec_type": "subtitle",
-                "tags": {
-                    "language": "eng"
-                },
-                "disposition": {
-                    "default": 1
-                }
-            }
+                "tags": {"language": "eng"},
+                "disposition": {"default": 1},
+            },
         ],
         "format": {
             "filename": "input.mkv",
@@ -134,6 +129,6 @@ def sample_probe_data():
             "format_long_name": "Matroska / WebM",
             "duration": "10.0",
             "size": "104857600",
-            "bit_rate": "8388608"
-        }
+            "bit_rate": "8388608",
+        },
     }
