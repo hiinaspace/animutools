@@ -17,7 +17,7 @@ logger = logging.getLogger("animutools")
 
 def probe_video(infile):
     """Probe a video file and return audio/subtitle track information."""
-    probe = ffmpeg.probe(infile)
+    probe = ffmpeg.probe(infile, cmd=os.environ.get("FFPROBE_BINARY", "ffprobe"))
     audio_track = 0
     audio_count = 0
     audio_stream = None
@@ -85,7 +85,9 @@ def probe_video(infile):
     }
 
 
-def analyze_audio_loudness(infile, audio_track, audio_stream, probe_result):
+def analyze_audio_loudness(
+    infile, audio_track, audio_stream, probe_result, show_progress=True
+):
     """Analyze audio loudness using FFmpeg loudnorm filter first pass."""
     # Get input sample rate for resampling back later
     if not audio_stream:  # Should not happen if probe_video is called first
@@ -96,21 +98,28 @@ def analyze_audio_loudness(infile, audio_track, audio_stream, probe_result):
     input_sample_rate = audio_stream.get("sample_rate", "48000")
 
     # Build FFmpeg command for loudnorm analysis
-    analysis_stream = (
-        ffmpeg.input(infile)
-        .audio.filter("loudnorm", print_format="json")
-        .output("pipe:", format="null")
-        .global_args("-map", f"0:a:{audio_track}", "-hide_banner", "-nostats")
-    )
+    analysis_audio = ffmpeg.input(infile)[f"a:{audio_track}"]
+    analysis_stream = analysis_audio.filter(
+        "loudnorm", print_format="json"
+    ).output("pipe:", format="null")
 
     # Run analysis with progress tracking and stderr capture
     try:
-        stderr_output = run_ffmpeg_with_progress(
-            analysis_stream,
-            probe_result,
-            description="Analyzing audio loudness",
-            capture_stderr=True,
-        )
+        if show_progress:
+            stderr_output = run_ffmpeg_with_progress(
+                analysis_stream,
+                probe_result,
+                description="Analyzing audio loudness",
+                capture_stderr=True,
+            )
+        else:
+            _, stderr_output = analysis_stream.run(
+                cmd=os.environ.get("FFMPEG_BINARY", "ffmpeg"),
+                capture_stdout=True,
+                capture_stderr=True,
+            )
+            if isinstance(stderr_output, bytes):
+                stderr_output = stderr_output.decode(errors="replace")
 
         # Extract JSON from stderr (loudnorm prints to stderr)
         json_start = stderr_output.rfind("{")
@@ -270,7 +279,7 @@ def process_video(infile, outfile, options):
         )
         sub_track = options.subtitle_index
 
-    if options.audio_index is not None:
+    if getattr(options, "audio_index", None) is not None:
         logger.info(
             f"Overriding audio track from {audio_track=} to {options.audio_index=}"
         )
@@ -418,7 +427,11 @@ def process_video(infile, outfile, options):
     else:
         # Apply audio normalization
         measurements, input_sample_rate = analyze_audio_loudness(
-            infile, audio_track, audio_stream, probe
+            infile,
+            audio_track,
+            audio_stream,
+            probe,
+            show_progress=not options.no_progress,
         )
 
         audio = ffin[f"a:{audio_track}"]  # Select the original audio stream
@@ -463,7 +476,10 @@ def process_video(infile, outfile, options):
                 fcntl.flock(f, fcntl.LOCK_EX)
                 # Use rich progress bar if progress is enabled
                 if options.no_progress:
-                    output.run()
+                    output.run(
+                        cmd=os.environ.get("FFMPEG_BINARY", "ffmpeg"),
+                        overwrite_output=options.overwrite,
+                    )
                 else:
                     run_ffmpeg_with_progress(
                         output, probe, "Encoding video", options.overwrite
@@ -471,7 +487,10 @@ def process_video(infile, outfile, options):
         else:
             # no fnctl on windows
             if options.no_progress:
-                output.run()
+                output.run(
+                    cmd=os.environ.get("FFMPEG_BINARY", "ffmpeg"),
+                    overwrite_output=options.overwrite,
+                )
             else:
                 run_ffmpeg_with_progress(
                     output, probe, "Encoding video", options.overwrite

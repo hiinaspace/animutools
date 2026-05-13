@@ -135,6 +135,26 @@ def send_progress(tcp_url, duration):
         print(f"Error sending progress: {e}", file=sys.stderr)
 
 
+def write_progress(stream, duration):
+    """Write ffmpeg -progress style updates to a pipe."""
+    current_time = 0.0
+    frame = 0
+
+    while current_time < duration:
+        time.sleep(FAKE_DELAY)
+        current_time += FAKE_UPDATE_FREQ
+        frame += int(24 * FAKE_UPDATE_FREQ)
+        out_time_ms = int(min(current_time, duration) * 1_000_000)
+        print(f"frame={frame}", file=stream, flush=True)
+        print(f"out_time_ms={out_time_ms}", file=stream, flush=True)
+        print("progress=continue", file=stream, flush=True)
+
+    final_time_ms = int(duration * 1_000_000)
+    print(f"frame={frame}", file=stream, flush=True)
+    print(f"out_time_ms={final_time_ms}", file=stream, flush=True)
+    print("progress=end", file=stream, flush=True)
+
+
 def is_loudnorm_analysis(args):
     """Check if this is a loudnorm analysis pass."""
     # Loudnorm analysis has: -filter:a loudnorm with print_format=json and -f null
@@ -233,7 +253,11 @@ def main():
     print(f"Output #0, mp4, to '{output_file}':", file=sys.stderr)
 
     # Send progress if requested
-    if progress_url:
+    if progress_url == "pipe:2":
+        write_progress(sys.stderr, FAKE_DURATION)
+    elif progress_url == "pipe:1":
+        write_progress(sys.stdout, FAKE_DURATION)
+    elif progress_url:
         send_progress(progress_url, FAKE_DURATION)
     else:
         # Just sleep to simulate encoding

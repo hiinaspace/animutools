@@ -263,7 +263,7 @@ class TestInterruptHandling:
             dry_run = False
             remux = False
             probe = False
-            no_progress = True
+            no_progress = False
             test = False
             overwrite = True
             verbose = False

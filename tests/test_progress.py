@@ -1,10 +1,16 @@
 """Tests for progress tracking functionality."""
 
 import pytest
+import ffmpeg
 import socket
 import threading
 import time
-from animutools.progress import ProgressServer, probe_duration
+from animutools.progress import (
+    ProgressServer,
+    _compile_ffmpeg_command,
+    probe_duration,
+    run_ffmpeg_with_progress,
+)
 
 
 class TestProbeData:
@@ -47,6 +53,53 @@ class TestProbeData:
 
         duration = probe_duration(probe_result)
         assert duration == 0
+
+
+class TestFFmpegCommand:
+    """Tests for FFmpeg command preparation."""
+
+    def test_global_progress_args_are_inserted_before_inputs(self):
+        stream = (
+            ffmpeg.input("input.mkv")
+            .output("output.mp4")
+            .global_args(
+                "-progress",
+                "tcp://127.0.0.1:1234",
+                "-nostats",
+                "-hide_banner",
+            )
+        )
+
+        cmd = _compile_ffmpeg_command(stream, overwrite=True, progress=True)
+
+        input_index = cmd.index("-i")
+        output_index = cmd.index("output.mp4")
+
+        assert cmd.index("-y") < input_index
+        assert cmd.index("-hide_banner") < input_index
+        assert cmd.index("-nostats") < input_index
+        assert cmd.index("-progress") < input_index
+        assert "-progress" not in cmd[output_index + 1:]
+
+    def test_run_captures_fast_loudnorm_stderr(
+        self, fake_ffmpeg_env, sample_video_file, monkeypatch
+    ):
+        monkeypatch.setenv("FAKE_FFMPEG_DELAY", "0")
+        stream = (
+            ffmpeg.input(str(sample_video_file))["a:0"]
+            .filter("loudnorm", print_format="json")
+            .output("pipe:", format="null")
+        )
+        probe_result = {"format": {"duration": "10.0"}}
+
+        stderr = run_ffmpeg_with_progress(
+            stream,
+            probe_result,
+            description="Analyzing audio loudness",
+            capture_stderr=True,
+        )
+
+        assert '"input_i"' in stderr
 
 
 class TestProgressServer:

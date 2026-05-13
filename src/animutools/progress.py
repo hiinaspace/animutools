@@ -1,10 +1,34 @@
 #!/usr/bin/env python3
+import os
+import re
 import socket
+import signal
+import subprocess
 import logging
 import threading
 from rich.progress import Progress, TimeElapsedColumn, SpinnerColumn
 
 logger = logging.getLogger("animutools")
+
+
+_PROGRESS_KEYS = {
+    "bitrate",
+    "continue",
+    "drop_frames",
+    "dup_frames",
+    "fps",
+    "frame",
+    "out_time",
+    "out_time_ms",
+    "out_time_us",
+    "progress",
+    "speed",
+    "total_size",
+}
+
+_FFMPEG_WARNING_RE = re.compile(
+    r"error|err:|invalid|unable|fail|could not", re.IGNORECASE
+)
 
 
 class ProgressServer:
@@ -139,6 +163,190 @@ def probe_duration(probe_result):
     return duration
 
 
+def _is_progress_key(key):
+    return key in _PROGRESS_KEYS or (
+        key.startswith("stream_") and key.endswith("_q")
+    )
+
+
+def _split_progress_line(line):
+    if "=" not in line:
+        return None, None
+
+    key, value = line.split("=", 1)
+    key = key.strip()
+    if not _is_progress_key(key):
+        return None, None
+
+    return key, value.strip()
+
+
+def _parse_progress_seconds(key, value):
+    try:
+        if key in {"out_time_ms", "out_time_us"}:
+            return float(value) / 1_000_000.0
+
+        if key == "out_time":
+            hours, minutes, seconds = value.split(":")
+            return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+    return None
+
+
+def _compile_ffmpeg_command(ffmpeg_stream, overwrite=False, progress=False):
+    """Compile an ffmpeg-python stream with global args before the inputs.
+
+    ffmpeg-python's global_args()/overwrite_output() append options after the
+    output URL, which can produce "Trailing option(s)" warnings for options like
+    -map and can make progress handling unreliable. Keep known global flags in
+    one valid place instead.
+    """
+    cmd = ffmpeg_stream.compile()
+    if not cmd:
+        raise RuntimeError("Could not compile FFmpeg command")
+
+    executable = os.environ.get("FFMPEG_BINARY", cmd[0])
+    args = cmd[1:]
+    filtered_args = []
+    saw_overwrite = False
+    index = 0
+
+    while index < len(args):
+        arg = args[index]
+
+        if arg == "-progress":
+            index += 2
+            continue
+
+        if arg in {"-hide_banner", "-nostats"}:
+            index += 1
+            continue
+
+        if arg == "-y":
+            saw_overwrite = True
+            index += 1
+            continue
+
+        filtered_args.append(arg)
+        index += 1
+
+    global_args = []
+    if overwrite or saw_overwrite:
+        global_args.append("-y")
+
+    global_args.extend(["-hide_banner", "-nostats"])
+    if progress:
+        global_args.extend(["-progress", "pipe:2"])
+
+    return [executable, *global_args, *filtered_args]
+
+
+def _process_group_kwargs():
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+
+    return {"start_new_session": True}
+
+
+def _terminate_process(process):
+    if process.poll() is not None:
+        return
+
+    try:
+        if os.name == "nt":
+            process.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(os.getpgid(process.pid), signal.SIGINT)
+    except Exception:
+        try:
+            process.terminate()
+        except Exception:
+            pass
+
+    try:
+        process.wait(timeout=5)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+
+    try:
+        if os.name == "nt":
+            process.kill()
+        else:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    except Exception:
+        try:
+            process.kill()
+        except Exception:
+            pass
+
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        logger.warning("FFmpeg process did not exit after forced termination")
+
+
+def _log_ffmpeg_line(line):
+    if not line:
+        return
+
+    if _FFMPEG_WARNING_RE.search(line):
+        logger.warning(f"FFmpeg: {line}")
+    else:
+        logger.debug(f"FFmpeg: {line}")
+
+
+def _run_ffmpeg_process(cmd, capture_stderr=False, progress_callback=None):
+    stderr_buffer = []
+    process = None
+
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            bufsize=1,
+            **_process_group_kwargs(),
+        )
+
+        if process.stderr is not None:
+            for raw_line in process.stderr:
+                line = raw_line.rstrip("\r\n")
+                if capture_stderr:
+                    stderr_buffer.append(line)
+
+                key, value = _split_progress_line(line)
+                if key:
+                    if progress_callback:
+                        progress_callback(key, value)
+                    continue
+
+                _log_ffmpeg_line(line)
+
+        returncode = process.wait()
+        if returncode != 0:
+            raise RuntimeError(f"FFmpeg exited with code {returncode}")
+
+    except KeyboardInterrupt:
+        if process is not None:
+            _terminate_process(process)
+        raise
+    except Exception:
+        if process is not None and process.poll() is None:
+            _terminate_process(process)
+        raise
+
+    if capture_stderr:
+        return "\n".join(stderr_buffer)
+
+    return None
+
+
 def run_ffmpeg_with_progress(
     ffmpeg_stream,
     probe_result,
@@ -156,200 +364,54 @@ def run_ffmpeg_with_progress(
     """
     duration = probe_duration(probe_result)
 
-    if duration <= 0:
-        # No progress if duration unknown
+    show_progress = duration > 0
+    if not show_progress:
         logger.warning("Cannot show progress - unknown duration")
-        ffmpeg_stream.run(capture_stdout=False, capture_stderr=False)
-        return
 
-    # Keep track of whether ffmpeg completed successfully
-    ffmpeg_success = False
-    server = None
+    cmd = _compile_ffmpeg_command(
+        ffmpeg_stream, overwrite=overwrite, progress=show_progress
+    )
 
-    # Buffer to capture stderr if requested
-    stderr_buffer = [] if capture_stderr else None
-
-    # Add overwrite option if requested
-    if overwrite:
-        ffmpeg_stream = ffmpeg_stream.global_args("-y")
-
-    # Store the previous log level and temporarily reduce logging during encoding
     previous_level = logger.level
     if logger.level <= logging.INFO:
         # Set to INFO instead of WARNING to show important messages
         logger.setLevel(logging.INFO)
 
-    logger.info(f"Starting encoding process ({duration:.2f} seconds)")
+    if show_progress:
+        logger.info(f"Starting encoding process ({duration:.2f} seconds)")
+    else:
+        logger.info("Starting FFmpeg process")
 
     try:
+        if not show_progress:
+            return _run_ffmpeg_process(cmd, capture_stderr=capture_stderr)
+
         with Progress(
             SpinnerColumn(),
             *Progress.get_default_columns(),
             TimeElapsedColumn(),
         ) as progress:
-            # Create the task but don't start it until FFmpeg connects
-            task = progress.add_task(description, total=duration, start=False)
+            task = progress.add_task(description, total=duration)
 
-            # Create a flag to track whether FFmpeg has connected
-            connected = False
-
-            # Define the progress update callback
             def update_progress(key, value):
-                nonlocal connected
-
-                if key == "start" and value == "connected":
-                    # Start the progress bar when connection is established
-                    connected = True
-                    progress.start_task(task)
-                elif key == "out_time_ms":
-                    try:
-                        time_sec = float(value) / 1_000_000.0
-                        # Set absolute position to avoid drift
-                        progress.update(task, completed=min(time_sec, duration))
-                    except (ValueError, TypeError, OverflowError):
-                        pass
+                time_sec = _parse_progress_seconds(key, value)
+                if time_sec is not None:
+                    progress.update(task, completed=min(time_sec, duration))
                 elif key == "progress" and value == "end":
-                    # Ensure we show 100% completion
                     progress.update(task, completed=duration)
 
-            # Start the progress server
-            server = ProgressServer(update_progress)
-            progress_url = server.start()
-
-            # Add progress URL to ffmpeg stream and disable FFmpeg's own stats output
-            # Also add -hide_banner to reduce noise
-            stream_with_progress = ffmpeg_stream.global_args(
-                "-progress", progress_url, "-nostats", "-hide_banner"
+            stderr_output = _run_ffmpeg_process(
+                cmd,
+                capture_stderr=capture_stderr,
+                progress_callback=update_progress,
             )
 
-            # Run FFmpeg in a subprocess, capturing output
-            try:
-                import subprocess
-                import queue
-                import re
-
-                # Get command as list of strings
-                cmd = stream_with_progress.compile()
-
-                # Start FFmpeg process with pipe for stderr
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    bufsize=1,
-                    universal_newlines=True,
-                )
-
-                # Queue for output lines
-                output_queue = queue.Queue()
-                stop_monitoring = threading.Event()
-
-                # Monitor FFmpeg output in a separate thread
-                def monitor_output():
-                    try:
-                        for line in process.stderr:
-                            line = line.strip()
-                            if line and not stop_monitoring.is_set():
-                                # Capture stderr if requested
-                                if capture_stderr:
-                                    stderr_buffer.append(line)
-                                output_queue.put(line)
-                    except (ValueError, IOError):
-                        # Pipe may be closed
-                        pass
-                    except Exception as e:
-                        logger.debug(f"Error reading FFmpeg output: {e}")
-
-                # Start output monitoring thread
-                output_thread = threading.Thread(target=monitor_output, daemon=True)
-                output_thread.start()
-
-                # Thread to process and filter output
-                def process_output():
-                    try:
-                        while not stop_monitoring.is_set():
-                            try:
-                                line = output_queue.get(timeout=0.5)
-
-                                # Skip progress lines (we handle them via TCP)
-                                if line.startswith("frame=") or line.startswith(
-                                    "size="
-                                ):
-                                    continue
-
-                                # Warnings and errors get higher log levels
-                                if re.search(
-                                    r"error|err:|invalid|unable|fail|could not",
-                                    line,
-                                    re.IGNORECASE,
-                                ):
-                                    logger.warning(f"FFmpeg: {line}")
-                                else:
-                                    logger.debug(f"FFmpeg: {line}")
-
-                                output_queue.task_done()
-                            except queue.Empty:
-                                continue
-                    except Exception as e:
-                        logger.debug(f"Error processing FFmpeg output: {e}")
-
-                # Start processing thread
-                process_thread = threading.Thread(target=process_output, daemon=True)
-                process_thread.start()
-
-                # Wait for completion
-                process.wait()
-
-                # Stop the output monitoring
-                stop_monitoring.set()
-
-                # Wait for output threads to finish processing
-                if output_thread.is_alive():
-                    output_thread.join(timeout=1.0)
-                if process_thread.is_alive():
-                    process_thread.join(timeout=1.0)
-
-                # Check if FFmpeg succeeded
-                if process.returncode == 0:
-                    ffmpeg_success = True
-
-                    # If FFmpeg completed but never connected, that's strange
-                    if not connected:
-                        logger.warning(
-                            "FFmpeg completed without sending progress updates"
-                        )
-
-                    # Ensure progress bar reaches 100%
-                    progress.update(task, completed=duration)
-
-                    logger.info("Encoding completed successfully")
-                else:
-                    logger.error(f"FFmpeg failed with exit code {process.returncode}")
-                    raise RuntimeError(f"FFmpeg exited with code {process.returncode}")
-
-            except Exception as e:
-                logger.error(f"FFmpeg encoding failed: {e}")
-                raise
+            progress.update(task, completed=duration)
+            logger.info("Encoding completed successfully")
+            return stderr_output
 
     except KeyboardInterrupt:
         logger.warning("Encoding interrupted by user")
         raise
-    except Exception as e:
-        logger.error(f"Error during progress monitoring: {e}")
-        if not ffmpeg_success:
-            # Try again without progress if we failed during setup
-            logger.warning("Attempting to run without progress monitoring")
-            ffmpeg_stream.run(capture_stdout=False, capture_stderr=False)
     finally:
-        # Stop the progress server
-        if server:
-            server.stop()
-
-        # Restore previous log level
         logger.setLevel(previous_level)
-
-        # Return captured stderr if requested
-        if capture_stderr:
-            return "\n".join(stderr_buffer)
-        return None

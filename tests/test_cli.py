@@ -1,6 +1,7 @@
 """Tests for CLI argument parsing and command-line interface."""
 
 import pytest
+from animutools import cli
 from animutools.cli import parse_args
 
 
@@ -118,3 +119,39 @@ class TestArgParsing:
         args = parse_args()
 
         assert args.quiet is True
+
+    def test_single_file_extra_subtitle_dir_file_is_used(
+        self, monkeypatch, tmp_path
+    ):
+        """A file passed to --extra_subtitle_dir is accepted for single-file runs."""
+        infile = tmp_path / "input.mkv"
+        outfile = tmp_path / "output.mp4"
+        subtitle = tmp_path / "extra.srt"
+        infile.write_bytes(b"fake video")
+        subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\ntext\n")
+        captured = {}
+
+        def fake_process_video(infile_arg, outfile_arg, args):
+            captured["infile"] = infile_arg
+            captured["outfile"] = outfile_arg
+            captured["extra_subtitle_file"] = args.extra_subtitle_file
+
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "fenc",
+                str(infile),
+                str(outfile),
+                "--extra_subtitle_dir",
+                str(subtitle),
+            ],
+        )
+        monkeypatch.setattr(cli, "process_video", fake_process_video)
+
+        cli.main()
+
+        assert captured == {
+            "infile": str(infile),
+            "outfile": str(outfile),
+            "extra_subtitle_file": str(subtitle),
+        }

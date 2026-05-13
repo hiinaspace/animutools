@@ -30,10 +30,15 @@ def fake_ffmpeg_bin(tmp_path_factory):
         ffmpeg_link.symlink_to(fake_script)
         ffprobe_link.symlink_to(fake_script)
     else:
-        # On Windows, copy the script
+        # On Windows, create command shims that resolve before real ffmpeg.exe.
         import shutil
-        shutil.copy(fake_script, ffmpeg_link.with_suffix(".py"))
-        shutil.copy(fake_script, ffprobe_link.with_suffix(".py"))
+        for name, link in (("ffmpeg", ffmpeg_link), ("ffprobe", ffprobe_link)):
+            script_copy = link.with_suffix(".py")
+            shutil.copy(fake_script, script_copy)
+            link.with_suffix(".cmd").write_text(
+                f'@echo off\r\n"{sys.executable}" "{script_copy}" %*\r\n',
+                encoding="utf-8",
+            )
 
     return bin_dir
 
@@ -50,6 +55,10 @@ def fake_ffmpeg_env(fake_ffmpeg_bin, monkeypatch):
     original_path = os.environ.get("PATH", "")
     new_path = f"{fake_ffmpeg_bin}{os.pathsep}{original_path}"
     monkeypatch.setenv("PATH", new_path)
+    ffmpeg_name = "ffmpeg.cmd" if os.name == "nt" else "ffmpeg"
+    ffprobe_name = "ffprobe.cmd" if os.name == "nt" else "ffprobe"
+    monkeypatch.setenv("FFMPEG_BINARY", str(fake_ffmpeg_bin / ffmpeg_name))
+    monkeypatch.setenv("FFPROBE_BINARY", str(fake_ffmpeg_bin / ffprobe_name))
 
     # Set default environment variables for fake ffmpeg
     # These can be overridden in individual tests

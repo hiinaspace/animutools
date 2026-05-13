@@ -153,6 +153,19 @@ def main():
             do_bulk_processing(args)
         else:
             # This is the existing logic for single file processing
+            if args.extra_subtitle_dir and not args.extra_subtitle_file:
+                extra_subtitle_path = Path(args.extra_subtitle_dir)
+                if extra_subtitle_path.is_file():
+                    args.extra_subtitle_file = str(extra_subtitle_path)
+                    logger.info(
+                        "Using --extra_subtitle_dir value as --extra_subtitle_file for single-file encode"
+                    )
+                else:
+                    logger.warning(
+                        "--extra_subtitle_dir is only used for --bulk directory matching. "
+                        "Use --extra_subtitle_file for a single-file encode."
+                    )
+
             # Ensure output directory exists for single file processing too
             output_dir = os.path.dirname(args.outfile)
             if output_dir and not os.path.exists(output_dir):
