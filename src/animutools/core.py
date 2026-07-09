@@ -15,19 +15,131 @@ from rich.table import Table
 logger = logging.getLogger("animutools")
 
 
+_IMAGE_SUB_CODECS = ("dvd_subtitle", "hdmv_pgs_subtitle")
+# title keywords that mark a track as NOT the primary dialogue track
+_NON_DIALOGUE_TITLE = ("sign", "song", "forced", "dubtit", "sdh")
+
+
+def _sub_lang(stream):
+    return ((stream.get("tags") or {}).get("language") or "").lower()
+
+
+def _sub_title(stream):
+    return ((stream.get("tags") or {}).get("title") or "").lower()
+
+
+def _is_forced(stream):
+    return (stream.get("disposition") or {}).get("forced") == 1
+
+
+def _is_non_dialogue(stream):
+    return any(k in _sub_title(stream) for k in _NON_DIALOGUE_TITLE)
+
+
+def _detect_english_track(infile, sub_streams):
+    """Decode a text sample of each subtitle track and language-detect it.
+
+    Fallback for rips that mislabel or omit the language tag. Returns the index
+    of the first track detected as English, or None. Image-based subs are
+    skipped (can't be text-detected without OCR).
+    """
+    try:
+        from langdetect import detect, DetectorFactory
+
+        DetectorFactory.seed = 0
+    except Exception:
+        logger.warning(
+            "langdetect not installed; skipping text-based subtitle detection"
+        )
+        return None
+    import re
+    import subprocess
+
+    for i, s in enumerate(sub_streams):
+        if s.get("codec_name") in _IMAGE_SUB_CODECS:
+            continue
+        try:
+            result = subprocess.run(
+                [
+                    os.environ.get("FFMPEG_BINARY", "ffmpeg"),
+                    "-v",
+                    "error",
+                    "-i",
+                    infile,
+                    "-map",
+                    f"0:s:{i}",
+                    "-f",
+                    "srt",
+                    "-",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            lines = [
+                ln
+                for ln in result.stdout.splitlines()
+                if ln and "-->" not in ln and not ln.strip().isdigit()
+            ]
+            sample = re.sub(r"<[^>]+>", "", " ".join(lines[:60])).strip()
+            if sample and detect(sample) == "en":
+                logger.info(f"Text-detected English subtitle track at s:{i}")
+                return i
+        except Exception:
+            continue
+    return None
+
+
+def _select_subtitle_track(infile, sub_streams):
+    """Pick the best English dialogue subtitle track.
+
+    Priority:
+      1. English-tagged full-dialogue track (skip signs/songs/forced/dub/SDH).
+      2. Any English-tagged track.
+      3. Text-based language detection (handles mislabeled/untagged tracks).
+      4. The *sole* default-disposition track. Ignored when every track is
+         flagged default (some multi-sub rips do this, which used to make the
+         last default track -- often not English -- win and poison the pick).
+      5. Track 0.
+    """
+    eng = [i for i, s in enumerate(sub_streams) if _sub_lang(s) in ("eng", "en")]
+    eng_full = [
+        i
+        for i in eng
+        if not _is_non_dialogue(sub_streams[i]) and not _is_forced(sub_streams[i])
+    ]
+    if eng_full:
+        logger.info(f"Selected English dialogue subtitle track at s:{eng_full[0]}")
+        return eng_full[0]
+    if eng:
+        logger.info(f"Selected English subtitle track at s:{eng[0]}")
+        return eng[0]
+    detected = _detect_english_track(infile, sub_streams)
+    if detected is not None:
+        return detected
+    defaults = [
+        i
+        for i, s in enumerate(sub_streams)
+        if (s.get("disposition") or {}).get("default") == 1
+    ]
+    if len(defaults) == 1:
+        logger.info(f"Falling back to default subtitle track at s:{defaults[0]}")
+        return defaults[0]
+    logger.info("No English track identified; falling back to subtitle track s:0")
+    return 0
+
+
 def probe_video(infile):
     """Probe a video file and return audio/subtitle track information."""
     probe = ffmpeg.probe(infile, cmd=os.environ.get("FFPROBE_BINARY", "ffprobe"))
     audio_track = 0
     audio_count = 0
     audio_stream = None
-    sub_count = 0
     sub_track = 0
     sub_type = "text"
-    found_eng_sub_track = False
 
-    # XXX clean up spaghetti logic through here
     audio_streams = []  # Keep track of all audio streams
+    sub_streams = []  # subtitle streams, in file order
     for stream in probe["streams"]:
         # try to select jpn audio over english
         if stream["codec_type"] == "audio":
@@ -38,36 +150,13 @@ def probe_video(infile):
                     audio_track = audio_count
             audio_count += 1
         if stream["codec_type"] == "subtitle":
-            # try to select default stream
-            if (
-                "disposition" in stream
-                and "default" in stream["disposition"]
-                and stream["disposition"]["default"] == 1
-            ):
-                sub_track = sub_count
-                if (
-                    stream["codec_name"] == "dvd_subtitle"
-                    or stream["codec_name"] == "hdmv_pgs_subtitle"
-                ):
-                    sub_type = "dvd"
-            # try to select the first english sub track, which at least for these awful
-            # cyberpunk rips seems to be the japanese tl track and not the dubtitles.
-            # it is unfortunately completely ambiguous though.
-            if (
-                "tags" in stream
-                and "language" in stream["tags"]
-                and stream["tags"]["language"] == "eng"
-            ):
-                if not found_eng_sub_track:
-                    sub_track = sub_count
-                    found_eng_sub_track = True
-                    logger.info(f"Found first English subtitle track at {sub_track}")
-                    if (
-                        stream["codec_name"] == "dvd_subtitle"
-                        or stream["codec_name"] == "hdmv_pgs_subtitle"
-                    ):
-                        sub_type = "dvd"
-            sub_count += 1
+            sub_streams.append(stream)
+
+    sub_count = len(sub_streams)
+    if sub_count:
+        sub_track = _select_subtitle_track(infile, sub_streams)
+        if sub_streams[sub_track].get("codec_name") in _IMAGE_SUB_CODECS:
+            sub_type = "dvd"
 
     # Set audio_stream to the selected track
     if audio_streams and audio_track < len(audio_streams):

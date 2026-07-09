@@ -10,6 +10,7 @@ dependencies = [
     "tqdm>=4.67.1",
     "rich>=13.4.2",
     "guessit>=3.8.0",
+    "langdetect>=1.0.9",
 ]
 
 [project.optional-dependencies]
